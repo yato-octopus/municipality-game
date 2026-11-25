@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BBox } from '../types/game';
 
-export const MIN_ZOOM_RATIO = 0.65;
+export const MIN_ZOOM_RATIO = 0.45;
 export const MAX_ZOOM_RATIO = 120;
+
+// Full nationwide Japan viewBox bounds (Hokkaido to Kyushu + Okinawa inset)
+const JAPAN_FULL_BBOX: BBox = [22, 34, 940, 920];
 
 export interface ViewBoxRect {
   x: number;
@@ -182,11 +185,34 @@ export function useMapViewport({
     [containerAspect, stopAnimations, applyDomViewBox, commitViewBox],
   );
 
+  const getZoomBounds = useCallback((aspect: number) => {
+    const initRect = bboxToViewBox(baseBBoxRef.current, aspect);
+    const fullJapanRect = bboxToViewBox(JAPAN_FULL_BBOX, aspect);
+    const minW = initRect.w / MAX_ZOOM_RATIO;
+    const maxW = Math.max(
+      initRect.w / MIN_ZOOM_RATIO,
+      fullJapanRect.w / 0.55,
+    );
+    const minZoom = Math.min(MIN_ZOOM_RATIO, initRect.w / maxW);
+    return { initRect, minW, maxW, minZoom };
+  }, []);
+
   /** Zoom ratio relative to initial bbox width (>= 1 means zoomed in) */
-  const baseWidth = bboxToViewBox(initialBBox, containerAspect).w;
+  const { initRect: currentInitRect, minZoom: minZoomRatio } = (() => {
+    const initRect = bboxToViewBox(initialBBox, containerAspect);
+    const fullJapanRect = bboxToViewBox(JAPAN_FULL_BBOX, containerAspect);
+    const maxW = Math.max(
+      initRect.w / MIN_ZOOM_RATIO,
+      fullJapanRect.w / 0.55,
+    );
+    return {
+      initRect,
+      minZoom: Math.min(MIN_ZOOM_RATIO, initRect.w / maxW),
+    };
+  })();
   const zoomRatio = Math.max(
-    0.5,
-    Math.min(MAX_ZOOM_RATIO * 1.25, baseWidth / Math.max(0.25, viewBox.w)),
+    minZoomRatio,
+    Math.min(MAX_ZOOM_RATIO * 1.25, currentInitRect.w / Math.max(0.25, viewBox.w)),
   );
 
   /** Scale current viewBox relatively (> 1 always zooms in, < 1 always zooms out) */
@@ -197,9 +223,7 @@ export function useMapViewport({
       const el = svgNodeRef.current;
       const r = el?.getBoundingClientRect();
       const aspect = r && r.width > 10 && r.height > 10 ? r.width / r.height : containerAspect;
-      const initRect = bboxToViewBox(baseBBoxRef.current, aspect);
-      const minW = initRect.w / MAX_ZOOM_RATIO;
-      const maxW = initRect.w / MIN_ZOOM_RATIO;
+      const { minW, maxW } = getZoomBounds(aspect);
 
       const prev = viewBoxRef.current;
       const nextW = Math.max(minW, Math.min(maxW, prev.w / factor));
@@ -228,17 +252,17 @@ export function useMapViewport({
         h: nextH,
       });
     },
-    [containerAspect, stopAnimations, commitViewBox],
+    [containerAspect, getZoomBounds, stopAnimations, commitViewBox],
   );
 
   const setZoomAtPoint = useCallback(
     (nextZoomRatio: number, clientX?: number, clientY?: number) => {
       stopAnimations();
-      const clampedZoom = Math.max(MIN_ZOOM_RATIO, Math.min(MAX_ZOOM_RATIO, nextZoomRatio));
       const el = svgNodeRef.current;
       const r = el?.getBoundingClientRect();
       const aspect = r && r.width > 10 && r.height > 10 ? r.width / r.height : containerAspect;
-      const initRect = bboxToViewBox(baseBBoxRef.current, aspect);
+      const { initRect, minZoom } = getZoomBounds(aspect);
+      const clampedZoom = Math.max(minZoom, Math.min(MAX_ZOOM_RATIO, nextZoomRatio));
       const newW = initRect.w / clampedZoom;
       const newH = initRect.h / clampedZoom;
 
@@ -265,7 +289,7 @@ export function useMapViewport({
         h: newH,
       });
     },
-    [containerAspect, stopAnimations, commitViewBox],
+    [containerAspect, getZoomBounds, stopAnimations, commitViewBox],
   );
 
   /** Direct DOM viewBox pan during drag — zero React re-renders per pixel */
@@ -392,6 +416,7 @@ export function useMapViewport({
     viewBox,
     viewBoxString: formatViewBox(viewBox),
     zoomRatio,
+    minZoomRatio,
     fitBBox,
     animateToBBox,
     zoomByFactor,

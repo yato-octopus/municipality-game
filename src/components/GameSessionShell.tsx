@@ -263,6 +263,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     viewBox,
     viewBoxString,
     zoomRatio,
+    minZoomRatio,
     fitBBox,
     animateToBBox,
     zoomByFactor,
@@ -728,6 +729,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         totalCount={orderedTargets.length}
         config={config}
         zoomRatio={zoomRatio}
+        minZoomRatio={minZoomRatio}
         showJumpButtons={showJumpButtons}
         isCustomOrRandom={spec.isCustomOrRandom}
         inspectedPiece={inspectedPiece}

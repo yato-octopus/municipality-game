@@ -15,6 +15,7 @@ interface HudOverlayProps {
   totalCount: number;
   config: ConfigState;
   zoomRatio: number;
+  minZoomRatio?: number;
   showJumpButtons: 'japan' | 'none';
   isCustomOrRandom: boolean;
   inspectedPiece: MapPieceItem | null;
@@ -41,6 +42,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   totalCount,
   config,
   zoomRatio,
+  minZoomRatio = MIN_ZOOM_RATIO,
   showJumpButtons,
   isCustomOrRandom,
   inspectedPiece,
@@ -60,20 +62,22 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
     ? [...JAPAN_REGION_JUMPS].reverse()
     : JAPAN_REGION_JUMPS;
 
+  const effectiveMinZoom = Math.max(0.01, Math.min(MIN_ZOOM_RATIO, minZoomRatio));
   const sliderVal = Math.max(
     0,
     Math.min(
       100,
       Math.round(
-        (Math.log(Math.max(MIN_ZOOM_RATIO, zoomRatio) / MIN_ZOOM_RATIO) /
-          Math.log(MAX_ZOOM_RATIO / MIN_ZOOM_RATIO)) *
+        (Math.log(Math.max(effectiveMinZoom, zoomRatio) / effectiveMinZoom) /
+          Math.log(MAX_ZOOM_RATIO / effectiveMinZoom)) *
           100,
       ),
     ),
   );
 
   const handleSliderChange = (val: number) => {
-    const nextZoom = MIN_ZOOM_RATIO * Math.pow(MAX_ZOOM_RATIO / MIN_ZOOM_RATIO, val / 100);
+    const nextZoom =
+      effectiveMinZoom * Math.pow(MAX_ZOOM_RATIO / effectiveMinZoom, val / 100);
     onZoomChange(nextZoom);
   };
 
