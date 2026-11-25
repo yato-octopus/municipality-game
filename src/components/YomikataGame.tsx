@@ -128,7 +128,7 @@ export const YomikataGame: React.FC<YomikataGameProps> = ({
               className="btn-secondary btn-xs"
               onClick={() => onFocusPiece(activePiece)}
             >
-              📍 フォーカス
+              📍 場所へフォーカス
             </button>
             {!config.disableHelpButton && (
               <button

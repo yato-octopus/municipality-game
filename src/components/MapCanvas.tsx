@@ -1,10 +1,16 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ViewBoxRect } from '../hooks/useMapViewport';
 import type { InsetBoxSpec } from '../services/mapDataLoader';
 import type { ConfigState, MapPieceItem, MapTag } from '../types/game';
 
+interface SafariGestureEvent extends Event {
+  scale: number;
+  clientX: number;
+  clientY: number;
+}
+
 interface MapCanvasProps {
-  svgRef: React.RefObject<SVGSVGElement | null>;
+  svgRef: React.RefCallback<SVGSVGElement>;
   viewBox: ViewBoxRect;
   viewBoxString: string;
   targetPieces: MapPieceItem[];
@@ -31,8 +37,7 @@ interface MapCanvasProps {
   onPieceClick?: (piece: MapPieceItem) => void;
   onPanBy: (dx: number, dy: number) => void;
   onStartInertia: (vx: number, vy: number) => void;
-  onZoomAt: (nextZoom: number, clientX?: number, clientY?: number) => void;
-  zoomRatio: number;
+  onZoomByFactor: (factor: number, clientX?: number, clientY?: number) => void;
 }
 
 const HYPSOMETRIC_PALETTE = [
@@ -79,10 +84,18 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   onPieceClick,
   onPanBy,
   onStartInertia,
-  onZoomAt,
-  zoomRatio,
+  onZoomByFactor,
 }) => {
   const [isPanning, setIsPanning] = useState(false);
+  const localSvgRef = useRef<SVGSVGElement | null>(null);
+
+  const mergedSvgRef = useCallback(
+    (node: SVGSVGElement | null) => {
+      localSvgRef.current = node;
+      svgRef(node);
+    },
+    [svgRef],
+  );
 
   const dragRef = useRef<{
     active: boolean;
@@ -110,31 +123,84 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
   const suppressClickRef = useRef(false);
   const touchPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const pinchStartRef = useRef<{ dist: number; zoom: number } | null>(null);
+  const pinchPrevDistRef = useRef<number | null>(null);
 
-  const zoomRef = useRef(zoomRatio);
-  const onZoomAtRef = useRef(onZoomAt);
+  const onZoomByFactorRef = useRef(onZoomByFactor);
   const onPanByRef = useRef(onPanBy);
   const onStartInertiaRef = useRef(onStartInertia);
   useEffect(() => {
-    zoomRef.current = zoomRatio;
-    onZoomAtRef.current = onZoomAt;
+    onZoomByFactorRef.current = onZoomByFactor;
     onPanByRef.current = onPanBy;
     onStartInertiaRef.current = onStartInertia;
   });
 
-  // Bind non-passive wheel listener to allow smooth cursor-centered zoom without console warnings
+  // Bind non-passive wheel & Safari gesture listeners for accurate trackpad pinch + mouse wheel zoom
   useEffect(() => {
-    const el = svgRef.current;
+    const el = localSvgRef.current;
     if (!el) return;
+
+    let lastGestureScale = 1;
+    let inSafariGesture = false;
+
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
-      onZoomAtRef.current(zoomRef.current * factor, e.clientX, e.clientY);
+      if (inSafariGesture && e.ctrlKey) return;
+      // Ignore horizontal-only / zero-deltaY events (prevents shrinking during trackpad wobble)
+      if (e.deltaY === 0) return;
+
+      if (e.ctrlKey) {
+        // Trackpad pinch gesture on Chrome/Firefox/Edge:
+        // spreading fingers apart (zoom IN) -> deltaY < 0 -> factor > 1
+        // pinching fingers together (zoom OUT) -> deltaY > 0 -> factor < 1
+        const clamped = Math.max(-60, Math.min(60, e.deltaY));
+        const factor = Math.exp(-clamped * 0.012);
+        onZoomByFactorRef.current(factor, e.clientX, e.clientY);
+      } else {
+        // Mouse wheel or 2-finger vertical scroll
+        let dy = e.deltaY;
+        if (e.deltaMode === 1) dy *= 16;
+        else if (e.deltaMode === 2) dy *= 400;
+        const clamped = Math.max(-120, Math.min(120, dy));
+        const factor = Math.exp(-clamped * 0.0028);
+        onZoomByFactorRef.current(factor, e.clientX, e.clientY);
+      }
     };
+
+    const handleGestureStart = (ev: Event) => {
+      const e = ev as SafariGestureEvent;
+      e.preventDefault();
+      inSafariGesture = true;
+      lastGestureScale = e.scale || 1;
+    };
+
+    const handleGestureChange = (ev: Event) => {
+      const e = ev as SafariGestureEvent;
+      e.preventDefault();
+      const nextScale = e.scale || 1;
+      if (lastGestureScale > 0 && nextScale > 0) {
+        const step = nextScale / lastGestureScale;
+        lastGestureScale = nextScale;
+        onZoomByFactorRef.current(step, e.clientX, e.clientY);
+      }
+    };
+
+    const handleGestureEnd = (ev: Event) => {
+      ev.preventDefault();
+      inSafariGesture = false;
+      lastGestureScale = 1;
+    };
+
     el.addEventListener('wheel', handleWheel, { passive: false });
-    return () => el.removeEventListener('wheel', handleWheel);
-  }, [svgRef]);
+    el.addEventListener('gesturestart', handleGestureStart, { passive: false });
+    el.addEventListener('gesturechange', handleGestureChange, { passive: false });
+    el.addEventListener('gestureend', handleGestureEnd, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', handleWheel);
+      el.removeEventListener('gesturestart', handleGestureStart);
+      el.removeEventListener('gesturechange', handleGestureChange);
+      el.removeEventListener('gestureend', handleGestureEnd);
+    };
+  }, []);
 
   // Google-Maps-style global pointer tracking while left-click/touch dragging the map
   useEffect(() => {
@@ -142,17 +208,14 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       if (touchPointersRef.current.has(e.pointerId)) {
         touchPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       }
-      if (touchPointersRef.current.size === 2 && pinchStartRef.current) {
+      if (touchPointersRef.current.size === 2 && pinchPrevDistRef.current != null) {
         const pts = Array.from(touchPointersRef.current.values());
         const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
         const midX = (pts[0].x + pts[1].x) / 2;
         const midY = (pts[0].y + pts[1].y) / 2;
-        if (pinchStartRef.current.dist > 5) {
-          onZoomAtRef.current(
-            pinchStartRef.current.zoom * (dist / pinchStartRef.current.dist),
-            midX,
-            midY,
-          );
+        if (pinchPrevDistRef.current > 5 && dist > 5) {
+          onZoomByFactorRef.current(dist / pinchPrevDistRef.current, midX, midY);
+          pinchPrevDistRef.current = dist;
         }
         return;
       }
@@ -180,7 +243,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     const handleWinUp = (e: PointerEvent) => {
       touchPointersRef.current.delete(e.pointerId);
       if (touchPointersRef.current.size < 2) {
-        pinchStartRef.current = null;
+        pinchPrevDistRef.current = null;
       }
       const d = dragRef.current;
       if (d.active && (d.pointerId == null || e.pointerId === d.pointerId)) {
@@ -237,8 +300,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     touchPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (touchPointersRef.current.size === 2) {
       const pts = Array.from(touchPointersRef.current.values());
-      const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-      pinchStartRef.current = { dist, zoom: zoomRatio };
+      pinchPrevDistRef.current = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
       dragRef.current.active = false;
       setIsPanning(false);
       return;
@@ -258,7 +320,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   };
 
   const handleDoubleClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    onZoomAt(zoomRatio * 1.65, e.clientX, e.clientY);
+    onZoomByFactor(1.65, e.clientX, e.clientY);
   };
 
   const tryPieceClick = (piece: MapPieceItem) => {
@@ -571,7 +633,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
   return (
     <svg
-      ref={svgRef}
+      ref={mergedSvgRef}
       viewBox={viewBoxString}
       preserveAspectRatio="xMidYMid meet"
       className={`map-canvas-svg ${isPanning ? 'is-panning' : ''}`}

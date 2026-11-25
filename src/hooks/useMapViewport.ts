@@ -46,9 +46,15 @@ export function useMapViewport({
   dragInertia,
   fpsMode,
 }: UseMapViewportOptions) {
-  const svgRef = useRef<SVGSVGElement | null>(null);
+  const svgNodeRef = useRef<SVGSVGElement | null>(null);
+  const [svgEl, setSvgEl] = useState<SVGSVGElement | null>(null);
   const [containerAspect, setContainerAspect] = useState(1.4);
   const baseBBoxRef = useRef<BBox>(initialBBox);
+
+  const svgRef = useCallback((node: SVGSVGElement | null) => {
+    svgNodeRef.current = node;
+    setSvgEl(node);
+  }, []);
 
   const [viewBox, setViewBox] = useState<ViewBoxRect>(() =>
     bboxToViewBox(initialBBox, 1.4),
@@ -67,18 +73,20 @@ export function useMapViewport({
     }
   }, []);
 
-  // Keep SVG viewBox aspect matched 1:1 to rendered container box (prevents letterboxing drift when tray/window resizes)
+  // Attach ResizeObserver whenever the <svg> element actually mounts (even after async map load)
   useEffect(() => {
-    const el = svgRef.current;
-    if (!el) return;
+    if (!svgEl) return;
     let prevW = 0;
     let prevH = 0;
     const updateSize = () => {
-      const r = el.getBoundingClientRect();
+      const r = svgEl.getBoundingClientRect();
       if (r.width <= 10 || r.height <= 10) return;
       const nextAspect = r.width / r.height;
       setContainerAspect(nextAspect);
-      if (prevW > 10 && prevH > 10 && (Math.abs(r.width - prevW) > 1 || Math.abs(r.height - prevH) > 1)) {
+      if (prevW === 0) {
+        // First real measurement after mount: align viewBox aspect cleanly to the real container
+        setViewBox(bboxToViewBox(baseBBoxRef.current, nextAspect));
+      } else if (Math.abs(r.width - prevW) > 1 || Math.abs(r.height - prevH) > 1) {
         setViewBox((cur) => {
           const cx = cur.x + cur.w / 2;
           const cy = cur.y + cur.h / 2;
@@ -91,15 +99,15 @@ export function useMapViewport({
     };
     updateSize();
     const ro = new ResizeObserver(updateSize);
-    ro.observe(el);
+    ro.observe(svgEl);
     return () => ro.disconnect();
-  }, []);
+  }, [svgEl]);
 
   const fitBBox = useCallback(
     (bbox: BBox) => {
       stopAnimations();
       baseBBoxRef.current = bbox;
-      const el = svgRef.current;
+      const el = svgNodeRef.current;
       const r = el?.getBoundingClientRect();
       const aspect = r && r.width > 10 && r.height > 10 ? r.width / r.height : containerAspect;
       setViewBox(bboxToViewBox(bbox, aspect));
@@ -116,7 +124,7 @@ export function useMapViewport({
   const animateToBBox = useCallback(
     (targetBBox: BBox, durationMs = 260) => {
       stopAnimations();
-      const el = svgRef.current;
+      const el = svgNodeRef.current;
       const r = el?.getBoundingClientRect();
       const aspect = r && r.width > 10 && r.height > 10 ? r.width / r.height : containerAspect;
       const start = { ...viewBoxRef.current };
@@ -147,38 +155,82 @@ export function useMapViewport({
   const baseWidth = bboxToViewBox(initialBBox, containerAspect).w;
   const zoomRatio = Math.max(0.5, Math.min(60, baseWidth / Math.max(1, viewBox.w)));
 
+  /** Scale current viewBox relatively (> 1 always zooms in, < 1 always zooms out) */
+  const zoomByFactor = useCallback(
+    (factor: number, clientX?: number, clientY?: number) => {
+      if (!Number.isFinite(factor) || factor <= 0 || Math.abs(factor - 1) < 1e-4) return;
+      stopAnimations();
+      const el = svgNodeRef.current;
+      const r = el?.getBoundingClientRect();
+      const aspect = r && r.width > 10 && r.height > 10 ? r.width / r.height : containerAspect;
+      const initRect = bboxToViewBox(baseBBoxRef.current, aspect);
+      const minW = initRect.w / 48;
+      const maxW = initRect.w / 0.65;
+
+      setViewBox((prev) => {
+        const nextW = Math.max(minW, Math.min(maxW, prev.w / factor));
+        const actualFactor = prev.w / nextW;
+        const nextH = prev.h / actualFactor;
+
+        let anchorSvgX = prev.x + prev.w / 2;
+        let anchorSvgY = prev.y + prev.h / 2;
+        let fracX = 0.5;
+        let fracY = 0.5;
+
+        if (el && r && clientX != null && clientY != null) {
+          const m = computeSvgMetrics(el, prev);
+          if (m) {
+            anchorSvgX = prev.x + (clientX - m.rect.left - m.padX) / m.scale;
+            anchorSvgY = prev.y + (clientY - m.rect.top - m.padY) / m.scale;
+            fracX = Math.max(0, Math.min(1, (clientX - m.rect.left) / m.rect.width));
+            fracY = Math.max(0, Math.min(1, (clientY - m.rect.top) / m.rect.height));
+          }
+        }
+
+        return {
+          x: anchorSvgX - nextW * fracX,
+          y: anchorSvgY - nextH * fracY,
+          w: nextW,
+          h: nextH,
+        };
+      });
+    },
+    [containerAspect, stopAnimations],
+  );
+
   const setZoomAtPoint = useCallback(
     (nextZoomRatio: number, clientX?: number, clientY?: number) => {
       stopAnimations();
       const clampedZoom = Math.max(0.65, Math.min(48, nextZoomRatio));
-      const el = svgRef.current;
+      const el = svgNodeRef.current;
       const r = el?.getBoundingClientRect();
       const aspect = r && r.width > 10 && r.height > 10 ? r.width / r.height : containerAspect;
       const initRect = bboxToViewBox(baseBBoxRef.current, aspect);
       const newW = initRect.w / clampedZoom;
       const newH = initRect.h / clampedZoom;
 
-      const cur = viewBoxRef.current;
-      let anchorSvgX = cur.x + cur.w / 2;
-      let anchorSvgY = cur.y + cur.h / 2;
-      let fracX = 0.5;
-      let fracY = 0.5;
+      setViewBox((cur) => {
+        let anchorSvgX = cur.x + cur.w / 2;
+        let anchorSvgY = cur.y + cur.h / 2;
+        let fracX = 0.5;
+        let fracY = 0.5;
 
-      if (el && r && clientX != null && clientY != null) {
-        const m = computeSvgMetrics(el, cur);
-        if (m) {
-          anchorSvgX = cur.x + (clientX - m.rect.left - m.padX) / m.scale;
-          anchorSvgY = cur.y + (clientY - m.rect.top - m.padY) / m.scale;
-          fracX = Math.max(0, Math.min(1, (clientX - m.rect.left) / m.rect.width));
-          fracY = Math.max(0, Math.min(1, (clientY - m.rect.top) / m.rect.height));
+        if (el && r && clientX != null && clientY != null) {
+          const m = computeSvgMetrics(el, cur);
+          if (m) {
+            anchorSvgX = cur.x + (clientX - m.rect.left - m.padX) / m.scale;
+            anchorSvgY = cur.y + (clientY - m.rect.top - m.padY) / m.scale;
+            fracX = Math.max(0, Math.min(1, (clientX - m.rect.left) / m.rect.width));
+            fracY = Math.max(0, Math.min(1, (clientY - m.rect.top) / m.rect.height));
+          }
         }
-      }
 
-      setViewBox({
-        x: anchorSvgX - newW * fracX,
-        y: anchorSvgY - newH * fracY,
-        w: newW,
-        h: newH,
+        return {
+          x: anchorSvgX - newW * fracX,
+          y: anchorSvgY - newH * fracY,
+          w: newW,
+          h: newH,
+        };
       });
     },
     [containerAspect, stopAnimations],
@@ -187,7 +239,7 @@ export function useMapViewport({
   const panByScreenDelta = useCallback(
     (dxScreen: number, dyScreen: number) => {
       stopAnimations();
-      const el = svgRef.current;
+      const el = svgNodeRef.current;
       if (!el) return;
       setViewBox((prev) => {
         const m = computeSvgMetrics(el, prev);
@@ -206,7 +258,7 @@ export function useMapViewport({
     (vxScreenPerMs: number, vyScreenPerMs: number) => {
       stopAnimations();
       if (dragInertia <= 0.02) return;
-      const el = svgRef.current;
+      const el = svgNodeRef.current;
       if (!el) return;
 
       let vx = vxScreenPerMs * dragInertia;
@@ -245,7 +297,7 @@ export function useMapViewport({
   );
 
   const clientToSvg = useCallback((clientX: number, clientY: number): [number, number] => {
-    const el = svgRef.current;
+    const el = svgNodeRef.current;
     if (!el) return [0, 0];
     const vb = viewBoxRef.current;
     const m = computeSvgMetrics(el, vb);
@@ -257,7 +309,7 @@ export function useMapViewport({
   }, []);
 
   const svgScalePxPerUnit = useCallback((): number => {
-    const el = svgRef.current;
+    const el = svgNodeRef.current;
     if (!el) return 1;
     const m = computeSvgMetrics(el, viewBoxRef.current);
     return m ? m.scale : 1;
@@ -272,6 +324,7 @@ export function useMapViewport({
     zoomRatio,
     fitBBox,
     animateToBBox,
+    zoomByFactor,
     setZoomAtPoint,
     panByScreenDelta,
     startInertia,

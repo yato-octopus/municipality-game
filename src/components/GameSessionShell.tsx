@@ -106,7 +106,6 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
   const [showConfig, setShowConfig] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showTagModal, setShowTagModal] = useState(false);
-  const [showBackConfirm, setShowBackConfirm] = useState(false);
 
   // Load session map geometry once per mounted session (App keys this component by spec.sessionId)
   useEffect(() => {
@@ -166,7 +165,6 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     isCompleted ||
     showConfig ||
     showSaveModal ||
-    showBackConfirm ||
     showTagModal;
 
   useEffect(() => {
@@ -189,6 +187,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     zoomRatio,
     fitBBox,
     animateToBBox,
+    zoomByFactor,
     setZoomAtPoint,
     panByScreenDelta,
     startInertia,
@@ -265,25 +264,41 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
 
   const focusPieceSmooth = useCallback(
     (piece: MapPieceItem) => {
-      const spanW = Math.max(piece.bbox[2] - piece.bbox[0], 10);
-      const spanH = Math.max(piece.bbox[3] - piece.bbox[1], 10);
-      const targetSpan = Math.max(Math.max(spanW, spanH) * 4.5, 95);
+      const vb = loadedMap?.viewBBox;
+      const mapSpan = vb ? Math.max(vb[2] - vb[0], vb[3] - vb[1], 16) : 900;
+      const pieceSpan = Math.max(
+        piece.bbox[2] - piece.bbox[0],
+        piece.bbox[3] - piece.bbox[1],
+        1,
+      );
+      const minSpan = Math.min(115, mapSpan * 0.18);
+      const maxSpan = mapSpan * 0.72;
+      const targetSpan = Math.min(maxSpan, Math.max(pieceSpan * 4.2, minSpan));
       const [cx, cy] = piece.center;
-      animateToBBox([cx - targetSpan / 2, cy - targetSpan / 2, cx + targetSpan / 2, cy + targetSpan / 2]);
+      animateToBBox([
+        cx - targetSpan / 2,
+        cy - targetSpan / 2,
+        cx + targetSpan / 2,
+        cy + targetSpan / 2,
+      ]);
     },
-    [animateToBBox],
+    [animateToBBox, loadedMap],
   );
 
-  // Focus active target when playing Quiz / Yomikata if area is very dense (e.g. Nationwide munis / World)
+  // Automatically focus active target on every question across all Quiz / GeographyQuiz / Yomikata modes
   useEffect(() => {
-    if (!loadedMap || !activePiece || spec.playKind === 'puzzle' || isCompleted) return;
-    const isDenseMap =
-      loadedMap.contextPieces.length > 90 || spec.mapScope === 'world';
-    if (isDenseMap) {
-      focusPieceSmooth(activePiece);
+    if (
+      !loadedMap ||
+      !activePiece ||
+      readyStage !== 'playing' ||
+      spec.playKind === 'puzzle' ||
+      isCompleted
+    ) {
+      return;
     }
+    focusPieceSmooth(activePiece);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePiece?.id, loadedMap, spec.playKind, isCompleted]);
+  }, [activePiece?.id, loadedMap, readyStage, spec.playKind, isCompleted]);
 
   const persistMistakePiece = useCallback(
     (piece: MapPieceItem | null) => {
@@ -526,7 +541,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         onHelp={handleHelp}
         onOpenConfig={() => setShowConfig(true)}
         onOpenSave={() => setShowSaveModal(true)}
-        onBack={() => setShowBackConfirm(true)}
+        onBack={handleBackConfirmExit}
         onCloseInfo={() => setInspectedPiece(null)}
         onTogglePieceTag={onTogglePieceTag}
         onOpenTagManager={() => setShowTagModal(true)}
@@ -560,8 +575,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
           onPieceClick={handleMapPieceClick}
           onPanBy={panByScreenDelta}
           onStartInertia={startInertia}
-          onZoomAt={setZoomAtPoint}
-          zoomRatio={zoomRatio}
+          onZoomByFactor={zoomByFactor}
         />
       )}
 
@@ -701,35 +715,6 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
           }}
           onClose={() => setShowTagModal(false)}
         />
-      )}
-
-      {showBackConfirm && (
-        <div className="modal-backdrop" onClick={() => setShowBackConfirm(false)}>
-          <div className="modal-card confirm-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>タイトルへもどる</h3>
-            </div>
-            <div className="modal-body">
-              <p>
-                {spec.isCustomOrRandom
-                  ? 'タイトルへもどりますか？（※カスタム・ランダム・復習モードでは途中データは残りません。間違えた問題は復習リストに保存済みです）'
-                  : 'タイトルへもどりますか？（途中データはオートセーブに残ります）'}
-              </p>
-            </div>
-            <div className="modal-footer">
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => setShowBackConfirm(false)}
-              >
-                キャンセル
-              </button>
-              <button type="button" className="btn-primary" onClick={handleBackConfirmExit}>
-                タイトルへもどる
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {isCompleted && (

@@ -99,10 +99,9 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
     svgRef,
     viewBox,
     viewBoxString,
-    zoomRatio,
     fitBBox,
     animateToBBox,
-    setZoomAtPoint,
+    zoomByFactor,
     panByScreenDelta,
     startInertia,
   } = useMapViewport({
@@ -249,14 +248,14 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
         <button
           type="button"
           className="zoom-step-btn"
-          onClick={() => setZoomAtPoint(zoomRatio * 1.4)}
+          onClick={() => zoomByFactor(1.4)}
         >
           ＋
         </button>
         <button
           type="button"
           className="zoom-step-btn"
-          onClick={() => setZoomAtPoint(zoomRatio / 1.4)}
+          onClick={() => zoomByFactor(1 / 1.4)}
         >
           −
         </button>
@@ -292,8 +291,7 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
           onPieceClick={(p) => setSelectedPiece(p)}
           onPanBy={panByScreenDelta}
           onStartInertia={startInertia}
-          onZoomAt={setZoomAtPoint}
-          zoomRatio={zoomRatio}
+          onZoomByFactor={zoomByFactor}
         />
       )}
 
