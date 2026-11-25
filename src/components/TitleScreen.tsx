@@ -50,6 +50,10 @@ interface TitleScreenProps {
 
 const CHANGELOG_ITEMS: { ver: string; notes: string[] }[] = [
   {
+    ver: 'Ver 2.0.2',
+    notes: ['マップ名・タブ表記を「市町村」から「市区町村」へ統一'],
+  },
+  {
     ver: 'Ver 2.0.1',
     notes: [
       'クイズ選択肢のデフォルトを地図上ポインティング表示に変更',
@@ -602,7 +606,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               className={categoryTab === 'municipalities' ? 'active' : ''}
               onClick={() => handleSelectCategoryTab('municipalities')}
             >
-              全国・地方別 市町村
+              全国・地方別 市区町村
             </button>
             <button
               type="button"

@@ -25,7 +25,7 @@ interface DataTableModalProps {
 }
 
 const SORT_TABS: { key: SortTabKey; label: string }[] = [
-  { key: 'code', label: '市町村/コード' },
+  { key: 'code', label: '市区町村/コード' },
   { key: 'kana50', label: '50音' },
   { key: 'population', label: '人口' },
   { key: 'area', label: '面積' },

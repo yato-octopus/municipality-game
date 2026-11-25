@@ -141,8 +141,8 @@ export function buildAreaCatalog(
   const allMuniArea: AreaDefinition = {
     id: '00_japan_all',
     category: 'municipalities',
-    name: '市町村',
-    ruby: 'しちょうそん',
+    name: '市区町村',
+    ruby: 'しくちょうそん',
     subTitle: `全国${totalMunis.toLocaleString()}市区町村・7地方別`,
     population: 127443563,
     wiki: 'https://ja.wikipedia.org/wiki/%E6%97%A5%E6%9C%AC%E3%81%AE%E5%B8%82%E5%8C%BA%E7%94%BA%E6%9D%91',

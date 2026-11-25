@@ -1,4 +1,4 @@
-# 設計書：全国市区町村パズル＆地理クイズ アーキテクチャ設計（v2.0.1）
+# 設計書：全国市区町村パズル＆地理クイズ アーキテクチャ設計（v2.0.2）
 
 ## 1. システム全体構成
 
@@ -24,11 +24,11 @@ municipality-game/
 │           ├── index.json         # 全1,747市区町村メタデータ(うち792市・人口・面積・郡・地域区分・Wiki)
 │           └── all_paths.json     # 全1,747市区町村の統合済み高精度SVGパス(北海道・都島しょ調整済)
 ├── src/
-│   ├── version.ts                 # APP_VERSION / APP_VERSION_LABEL ('v2.0.1', package.json と同期)
+│   ├── version.ts                 # APP_VERSION / APP_VERSION_LABEL ('v2.0.2', package.json と同期)
 │   ├── types/
 │   │   └── game.ts                # GameModeId, QuizChoiceLayout, HintAreaOverlay, SaveSlot, ConfigState 等
 │   ├── data/
-│   │   ├── gameCatalog.ts         # 日本・都道府県(47)・市町村・市(全国/地方別)・自然地理の全モード定義
+│   │   ├── gameCatalog.ts         # 日本・都道府県(47)・市区町村・市(全国/地方別)・自然地理の全モード定義
 │   │   ├── prefColors.ts          # 隣接都道府県が同色にならない低彩度5色カラーリング定義
 │   │   └── similarNames.ts        # 「似た名前」グループ辞書
 │   ├── services/
@@ -48,7 +48,7 @@ municipality-game/
 │       ├── PuzzleGame.tsx         # パズル本体(ピース一覧トレイ・ドラッグ＆ドロップ・スナップ判定・2段階ヒント)
 │       ├── QuizGame.tsx           # 6択クイズ＋地理クイズ (下部表示 / 地図上ポインティング選択肢切替・2段階ヒント)
 │       ├── YomikataGame.tsx       # 読み方モード＋県庁読み方 (キーボード入力 + 日本語IME Enter連続回答・2段階ヒント)
-│       ├── ViewModeScreen.tsx     # 閲覧モード (日本/市町村/全国市/47都道府県・隣接県塗り分け・県ホバーツールチップ)
+│       ├── ViewModeScreen.tsx     # 閲覧モード (日本/市区町村/全国市/47都道府県・隣接県塗り分け・県ホバーツールチップ)
 │       ├── DataTableModal.tsx     # データ一覧モーダル (11種ソートタブ・地域フィルタ・検索・SubTable)
 │       ├── TagManagerModal.tsx    # タグ管理モーダル (DataTable2: 作成・ロック・名前変更・削除・一覧)
 │       ├── SaveSlotsModal.tsx     # 手動セーブ・上書き・ロード管理ダイアログ
@@ -88,7 +88,7 @@ municipality-game/
 
 ### 3.1 コア状態管理 (`App.tsx`)
 `AppView` は以下のユニオン型で管理し、画面遷移の不整合を防ぐ：
-- `title`: タイトル画面（リリースバージョン `v2.0.1` 表示）＋サブモーダル（エリア選択4タブ、`GameInfo`、手動ロード、`カスタム`、`ランダム`、`間違えた問題復習`、`その他`）
+- `title`: タイトル画面（リリースバージョン `v2.0.2` 表示）＋サブモーダル（エリア選択4タブ、`GameInfo`、手動ロード、`カスタム`、`ランダム`、`間違えた問題復習`、`その他`）
 - `play`: アクティブなプレイセッション（`puzzle` | `quiz` | `yomikata` | `geography_quiz`）
 - `view`: 閲覧モード（＋ `DataTable`）
 
