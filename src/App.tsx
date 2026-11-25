@@ -72,6 +72,36 @@ export function App() {
   const [view, setView] = useState<AppView>({ kind: 'title', screen: 'title' });
   const [lastCategoryTab, setLastCategoryTab] = useState<AreaCategory>('japan');
 
+  // Prevent browser page zoom when pinching on UI overlays (map SVG still handles its own zoom)
+  useEffect(() => {
+    const preventPinchWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+      }
+    };
+    const preventGesture = (e: Event) => {
+      e.preventDefault();
+    };
+    const preventMultiTouchMove = (e: TouchEvent) => {
+      if (e.touches.length >= 2) {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('wheel', preventPinchWheel, { passive: false });
+    window.addEventListener('gesturestart', preventGesture, { passive: false });
+    window.addEventListener('gesturechange', preventGesture, { passive: false });
+    window.addEventListener('gestureend', preventGesture, { passive: false });
+    window.addEventListener('touchmove', preventMultiTouchMove, { passive: false });
+    return () => {
+      window.removeEventListener('wheel', preventPinchWheel);
+      window.removeEventListener('gesturestart', preventGesture);
+      window.removeEventListener('gesturechange', preventGesture);
+      window.removeEventListener('gestureend', preventGesture);
+      window.removeEventListener('touchmove', preventMultiTouchMove);
+    };
+  }, []);
+
   useEffect(() => {
     void Promise.all([loadJapanPrefs(), loadMuniIndex()])
       .then(([jp, munis]) => {

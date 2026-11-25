@@ -50,6 +50,10 @@ interface TitleScreenProps {
 
 const CHANGELOG_ITEMS: { ver: string; notes: string[] }[] = [
   {
+    ver: 'Ver 2.0.3',
+    notes: ['UI 部分上でのピンチイン／ピンチアウト時にブラウザ自体の拡大率が変化しないよう修正'],
+  },
+  {
     ver: 'Ver 2.0.2',
     notes: ['マップ名・タブ表記を「市町村」から「市区町村」へ統一'],
   },

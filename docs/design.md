@@ -1,4 +1,4 @@
-# 設計書：全国市区町村パズル＆地理クイズ アーキテクチャ設計（v2.0.2）
+# 設計書：全国市区町村パズル＆地理クイズ アーキテクチャ設計（v2.0.3）
 
 ## 1. システム全体構成
 
@@ -24,7 +24,7 @@ municipality-game/
 │           ├── index.json         # 全1,747市区町村メタデータ(うち792市・人口・面積・郡・地域区分・Wiki)
 │           └── all_paths.json     # 全1,747市区町村の統合済み高精度SVGパス(北海道・都島しょ調整済)
 ├── src/
-│   ├── version.ts                 # APP_VERSION / APP_VERSION_LABEL ('v2.0.2', package.json と同期)
+│   ├── version.ts                 # APP_VERSION / APP_VERSION_LABEL ('v2.0.3', package.json と同期)
 │   ├── types/
 │   │   └── game.ts                # GameModeId, QuizChoiceLayout, HintAreaOverlay, SaveSlot, ConfigState 等
 │   ├── data/
@@ -88,7 +88,7 @@ municipality-game/
 
 ### 3.1 コア状態管理 (`App.tsx`)
 `AppView` は以下のユニオン型で管理し、画面遷移の不整合を防ぐ：
-- `title`: タイトル画面（リリースバージョン `v2.0.2` 表示）＋サブモーダル（エリア選択4タブ、`GameInfo`、手動ロード、`カスタム`、`ランダム`、`間違えた問題復習`、`その他`）
+- `title`: タイトル画面（リリースバージョン `v2.0.3` 表示）＋サブモーダル（エリア選択4タブ、`GameInfo`、手動ロード、`カスタム`、`ランダム`、`間違えた問題復習`、`その他`）
 - `play`: アクティブなプレイセッション（`puzzle` | `quiz` | `yomikata` | `geography_quiz`）
 - `view`: 閲覧モード（＋ `DataTable`）
 
