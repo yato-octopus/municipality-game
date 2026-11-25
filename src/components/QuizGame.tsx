@@ -15,7 +15,6 @@ interface QuizGameProps {
   allPoolPieces: MapPieceItem[];
   isGeographyQuiz: boolean;
   disableHelpButton: boolean;
-  hintStage: 0 | 1 | 2;
   quizChoiceLayout: QuizChoiceLayout;
   nameOnFix: boolean;
   hasJumpBar: boolean;
@@ -23,8 +22,7 @@ interface QuizGameProps {
   getSvgRect: () => DOMRect | null;
   subscribeLiveViewBox: (listener: () => void) => () => void;
   onFocusPiece: (piece: MapPieceItem) => void;
-  onHint1: () => void;
-  onHint2: () => void;
+  onUseHint: () => void;
   onToggleQuizChoiceLayout: () => void;
   onToggleNameOnFix: () => void;
   onAnswerResult: (correct: boolean) => void;
@@ -133,7 +131,6 @@ export const QuizGame: React.FC<QuizGameProps> = ({
   allPoolPieces,
   isGeographyQuiz,
   disableHelpButton,
-  hintStage,
   quizChoiceLayout,
   nameOnFix,
   hasJumpBar,
@@ -141,13 +138,13 @@ export const QuizGame: React.FC<QuizGameProps> = ({
   getSvgRect,
   subscribeLiveViewBox,
   onFocusPiece,
-  onHint1,
-  onHint2,
+  onUseHint,
   onToggleQuizChoiceLayout,
   onToggleNameOnFix,
   onAnswerResult,
 }) => {
   const [disabledChoiceIds, setDisabledChoiceIds] = useState<Set<string>>(new Set());
+  const [hintEliminatedIds, setHintEliminatedIds] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState<'ok' | 'ng' | null>(null);
   const [pointingLayout, setPointingLayout] = useState<PointingLayout | null>(null);
   const layerRef = useRef<HTMLDivElement | null>(null);
@@ -170,20 +167,33 @@ export const QuizGame: React.FC<QuizGameProps> = ({
     return shuffleArray([activePiece, ...distractors]);
   }, [activePiece, allPoolPieces]);
 
-  // Deterministically eliminate 2 wrong distractors when Hint 1+ is active
-  const hintEliminatedIds = useMemo(() => {
-    const eliminated = new Set<string>();
-    if (hintStage < 1) return eliminated;
-    const wrongs = choices.filter((c) => c.id !== activePiece.id);
-    const sorted = [...wrongs].sort(
+  const remainingWrongChoices = useMemo(
+    () =>
+      choices.filter(
+        (c) =>
+          c.id !== activePiece.id &&
+          !disabledChoiceIds.has(c.id) &&
+          !hintEliminatedIds.has(c.id),
+      ),
+    [choices, activePiece.id, disabledChoiceIds, hintEliminatedIds],
+  );
+
+  const handleUseHint = () => {
+    if (feedback === 'ok' || remainingWrongChoices.length === 0) return;
+    const sorted = [...remainingWrongChoices].sort(
       (a, b) =>
         hashString(`${activePiece.id}:${a.id}`) - hashString(`${activePiece.id}:${b.id}`),
     );
-    for (const item of sorted.slice(0, 2)) {
-      eliminated.add(item.id);
-    }
-    return eliminated;
-  }, [hintStage, choices, activePiece.id]);
+    const toEliminate = sorted.slice(0, 2);
+    setHintEliminatedIds((prev) => {
+      const next = new Set(prev);
+      for (const item of toEliminate) {
+        next.add(item.id);
+      }
+      return next;
+    });
+    onUseHint();
+  };
 
   const computePointingLayout = useCallback((): PointingLayout | null => {
     const layerEl = layerRef.current;
@@ -585,8 +595,7 @@ export const QuizGame: React.FC<QuizGameProps> = ({
     if (
       disabledChoiceIds.has(opt.id) ||
       hintEliminatedIds.has(opt.id) ||
-      feedback === 'ok' ||
-      hintStage >= 2
+      feedback === 'ok'
     ) {
       return;
     }
@@ -610,24 +619,15 @@ export const QuizGame: React.FC<QuizGameProps> = ({
         📍 場所へフォーカス
       </button>
       {!disableHelpButton && (
-        <div className="hint-btn-group">
-          <button
-            type="button"
-            className="btn-hint1 btn-xs"
-            title="この辺の大きな範囲を表示"
-            onClick={onHint1}
-          >
-            💡 ヒント1
-          </button>
-          <button
-            type="button"
-            className="btn-hint2 btn-xs"
-            title="その場所へ直接当てはめる"
-            onClick={onHint2}
-          >
-            💡 ヒント2
-          </button>
-        </div>
+        <button
+          type="button"
+          className="btn-hint1 btn-xs"
+          title="誤答の選択肢を2つ減らします"
+          disabled={feedback === 'ok' || remainingWrongChoices.length === 0}
+          onClick={handleUseHint}
+        >
+          💡 ヒント
+        </button>
       )}
       <button
         type="button"
@@ -662,7 +662,7 @@ export const QuizGame: React.FC<QuizGameProps> = ({
                 {pointingLayout.cards.map((card) => {
                   const isWrong = disabledChoiceIds.has(card.choice.id);
                   const isElim = !isWrong && hintEliminatedIds.has(card.choice.id);
-                  const isCorrect = hintStage >= 2 && card.choice.id === activePiece.id;
+                  const isCorrect = feedback === 'ok' && card.choice.id === activePiece.id;
                   const strokeColor = isCorrect
                     ? '#059669'
                     : isWrong || isElim
@@ -707,7 +707,7 @@ export const QuizGame: React.FC<QuizGameProps> = ({
                       cx={pointingLayout.anchorX}
                       cy={pointingLayout.anchorY}
                       r={4.8}
-                      fill={hintStage >= 2 ? '#059669' : '#ea580c'}
+                      fill={feedback === 'ok' ? '#059669' : '#ea580c'}
                       stroke="#ffffff"
                       strokeWidth={2}
                     />
@@ -719,7 +719,7 @@ export const QuizGame: React.FC<QuizGameProps> = ({
                 const opt = card.choice;
                 const isWrong = disabledChoiceIds.has(opt.id);
                 const isElim = !isWrong && hintEliminatedIds.has(opt.id);
-                const isCorrect = hintStage >= 2 && opt.id === activePiece.id;
+                const isCorrect = feedback === 'ok' && opt.id === activePiece.id;
                 const kanji = opt.answerKanji ?? opt.name;
                 const ruby = opt.answerRuby ?? opt.ruby;
                 const cls = [
@@ -800,7 +800,7 @@ export const QuizGame: React.FC<QuizGameProps> = ({
         {choices.map((opt) => {
           const isWrong = disabledChoiceIds.has(opt.id);
           const isElim = !isWrong && hintEliminatedIds.has(opt.id);
-          const isCorrect = hintStage >= 2 && opt.id === activePiece.id;
+          const isCorrect = feedback === 'ok' && opt.id === activePiece.id;
           const kanji = opt.answerKanji ?? opt.name;
           const ruby = opt.answerRuby ?? opt.ruby;
           const cls = [

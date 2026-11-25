@@ -1,5 +1,6 @@
 import React from 'react';
 import { JAPAN_REGION_JUMPS } from '../data/gameCatalog';
+import { MAX_ZOOM_RATIO, MIN_ZOOM_RATIO } from '../hooks/useMapViewport';
 import { getJapanRegionBBox } from '../services/regionJumpUtils';
 import { formatTimeMs } from '../utils/formatters';
 import type { BBox, ConfigState, MapPieceItem, MapTag } from '../types/game';
@@ -59,10 +60,20 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
     ? [...JAPAN_REGION_JUMPS].reverse()
     : JAPAN_REGION_JUMPS;
 
-  const sliderVal = Math.max(0, Math.min(100, Math.round((Math.log(Math.max(0.65, zoomRatio) / 0.65) / Math.log(48 / 0.65)) * 100)));
+  const sliderVal = Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round(
+        (Math.log(Math.max(MIN_ZOOM_RATIO, zoomRatio) / MIN_ZOOM_RATIO) /
+          Math.log(MAX_ZOOM_RATIO / MIN_ZOOM_RATIO)) *
+          100,
+      ),
+    ),
+  );
 
   const handleSliderChange = (val: number) => {
-    const nextZoom = 0.65 * Math.pow(48 / 0.65, val / 100);
+    const nextZoom = MIN_ZOOM_RATIO * Math.pow(MAX_ZOOM_RATIO / MIN_ZOOM_RATIO, val / 100);
     onZoomChange(nextZoom);
   };
 

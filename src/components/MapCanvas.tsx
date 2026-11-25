@@ -615,8 +615,8 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
     return { fill, stroke, strokeWidth };
   };
 
-  const labelFontSize = Math.max(1.2, Math.min(13, viewBox.w / 62));
-  const smallHitRadius = Math.max(1.3, viewBox.w * 0.0085);
+  const labelFontSize = Math.max(0.35, Math.min(13, viewBox.w / 62));
+  const smallHitRadius = Math.max(0.45, viewBox.w * 0.0085);
 
   const renderPiecePath = (piece: MapPieceItem) => {
     const st = getPieceStyle(piece);

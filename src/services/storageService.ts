@@ -8,6 +8,7 @@ import type {
 
 const KEYS = {
   CONFIG: 'municipality_game_config',
+  CONFIG_POINTING_MIGRATED: 'municipality_game_pointing_default_v1',
   RECORDS: 'municipality_game_records',
   AUTO_SAVE: 'municipality_game_auto_save',
   MANUAL_SAVES: 'municipality_game_manual_saves',
@@ -35,7 +36,7 @@ export const DEFAULT_CONFIG: ConfigState = {
   nameOnDrag: true,
   nameOnFix: true,
   dragInertia: 0.65,
-  quizChoiceLayout: 'bottom',
+  quizChoiceLayout: 'pointing',
 };
 
 const DEFAULT_TAGS: MapTag[] = [
@@ -69,7 +70,18 @@ export function loadConfig(): ConfigState {
   const saved = safeRead<Partial<ConfigState>>(KEYS.CONFIG, {});
   const merged: ConfigState = { ...DEFAULT_CONFIG, ...saved };
   if (merged.quizChoiceLayout !== 'bottom' && merged.quizChoiceLayout !== 'pointing') {
-    merged.quizChoiceLayout = 'bottom';
+    merged.quizChoiceLayout = 'pointing';
+  }
+  try {
+    if (!window.localStorage.getItem(KEYS.CONFIG_POINTING_MIGRATED)) {
+      merged.quizChoiceLayout = 'pointing';
+      window.localStorage.setItem(KEYS.CONFIG_POINTING_MIGRATED, '1');
+      if (window.localStorage.getItem(KEYS.CONFIG)) {
+        safeWrite(KEYS.CONFIG, merged);
+      }
+    }
+  } catch {
+    // Ignore storage access errors
   }
   return merged;
 }

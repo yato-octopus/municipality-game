@@ -115,7 +115,7 @@ municipality-game/
   - `.hud-actions-group` に `🏷 回答後の名前: ON/OFF`（`.hud-toggle-btn`）を配置し、`config.nameOnFix` をワンクリックで反転・即時反映する。
 
 ### 3.4 クイズ地図上ポインティング選択肢レイアウト (`QuizGame.tsx`, `useMapViewport.ts`)
-- `ConfigState.quizChoiceLayout`（`'bottom' | 'pointing'`）を保持し、クイズ下部バーおよび `ConfigModal` から即時切替できる。
+- `ConfigState.quizChoiceLayout`（`'bottom' | 'pointing'`、デフォルト `'pointing'`）を保持し、クイズ下部バーおよび `ConfigModal` から即時切替できる。
 - `useMapViewport` の `onLiveViewBoxChange` と `svgToContainerPoint` により、ドラッグパン・ホイールズーム・慣性減衰・リサイズ中の各フレームで画面座標へ再投影する。
 - ポインティングモード時は：
   - 対象アンカー座標（河川の場合は `linePts` 上で `center` に最も近い点）を算出し、左右各3枚の選択肢カード（`.quiz-pointing-card`）を対象バウンディングボックスの外側へ配置。

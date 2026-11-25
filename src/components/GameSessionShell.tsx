@@ -59,6 +59,7 @@ interface GameSessionShellProps {
   onToggleLockTag: (tagId: string) => void;
   onDeleteTag: (tagId: string) => void;
   onRestartSession: (nextSpec: GameSessionSpec) => void;
+  onExitToAreas: () => void;
   onExitToTitle: () => void;
 }
 
@@ -122,6 +123,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
   onToggleLockTag,
   onDeleteTag,
   onRestartSession,
+  onExitToAreas,
   onExitToTitle,
 }) => {
   const [loadedMap, setLoadedMap] = useState<LoadedSessionMap | null>(null);
@@ -150,9 +152,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
   const [hintFittedPieceId, setHintFittedPieceId] = useState<string | null>(null);
 
   const hint1ChargedPieceIdsRef = useRef<Set<string>>(new Set());
-  const hint2TimerRef = useRef<number | null>(null);
   const hintFittedTimerRef = useRef<number | null>(null);
-  const hint2AdvancingPieceIdRef = useRef<string | null>(null);
 
   const [showConfig, setShowConfig] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -181,7 +181,6 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
 
   useEffect(() => {
     return () => {
-      if (hint2TimerRef.current != null) window.clearTimeout(hint2TimerRef.current);
       if (hintFittedTimerRef.current != null) window.clearTimeout(hintFittedTimerRef.current);
     };
   }, []);
@@ -426,13 +425,6 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
   const handlePieceSuccess = useCallback(
     (pieceId: string, options?: { keepHintFitted?: boolean }) => {
       if (completedIds.has(pieceId)) return;
-      if (hint2TimerRef.current != null) {
-        window.clearTimeout(hint2TimerRef.current);
-        hint2TimerRef.current = null;
-      }
-      if (hint2AdvancingPieceIdRef.current === pieceId) {
-        hint2AdvancingPieceIdRef.current = null;
-      }
       const nextCompleted = new Set(completedIds);
       nextCompleted.add(pieceId);
       setCompletedIds(nextCompleted);
@@ -623,7 +615,6 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
       focusPieceSmooth(hintTarget);
       return;
     }
-    if (hint2AdvancingPieceIdRef.current === hintTarget.id) return;
 
     setHintsUsed((h) => h + 1);
     setHintState({
@@ -644,22 +635,10 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         setHintFittedPieceId((cur) => (cur === hintTarget.id ? null : cur));
         hintFittedTimerRef.current = null;
       }, 1800);
-      return;
-    }
-
-    if (spec.playKind === 'quiz' || spec.playKind === 'geography_quiz') {
-      hint2AdvancingPieceIdRef.current = hintTarget.id;
-      if (hint2TimerRef.current != null) {
-        window.clearTimeout(hint2TimerRef.current);
-      }
-      hint2TimerRef.current = window.setTimeout(() => {
-        hint2TimerRef.current = null;
-        handlePieceSuccessRef.current(hintTarget.id);
-      }, 1100);
     }
   };
 
-  const handleBackConfirmExit = () => {
+  const flushProgressBeforeExit = () => {
     if (!spec.isCustomOrRandom && !isCompleted && orderedTargets.length > 0) {
       onSaveAuto(
         buildProgressSnapshot(
@@ -671,6 +650,15 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         ),
       );
     }
+  };
+
+  const handleBackToAreas = () => {
+    flushProgressBeforeExit();
+    onExitToAreas();
+  };
+
+  const handleBackToTitle = () => {
+    flushProgressBeforeExit();
     onExitToTitle();
   };
 
@@ -750,7 +738,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         onResetZoom={() => loadedMap && fitBBox(loadedMap.viewBBox)}
         onOpenConfig={() => setShowConfig(true)}
         onOpenSave={() => setShowSaveModal(true)}
-        onBack={handleBackConfirmExit}
+        onBack={handleBackToAreas}
         onCloseInfo={() => setInspectedPiece(null)}
         onTogglePieceTag={onTogglePieceTag}
         onOpenTagManager={() => setShowTagModal(true)}
@@ -834,7 +822,6 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
               allPoolPieces={loadedMap.allPoolPieces}
               isGeographyQuiz={spec.playKind === 'geography_quiz'}
               disableHelpButton={config.disableHelpButton}
-              hintStage={hintStage}
               quizChoiceLayout={config.quizChoiceLayout}
               nameOnFix={config.nameOnFix}
               hasJumpBar={showJumpButtons !== 'none'}
@@ -842,8 +829,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
               getSvgRect={getSvgRect}
               subscribeLiveViewBox={subscribeLiveViewBox}
               onFocusPiece={focusPieceSmooth}
-              onHint1={handleHint1}
-              onHint2={handleHint2}
+              onUseHint={() => setHintsUsed((h) => h + 1)}
               onToggleQuizChoiceLayout={() =>
                 onConfigChange({
                   ...config,
@@ -870,10 +856,8 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
               activePiece={activePiece}
               isCapitalYomikata={spec.geoCategory === 'capital_y'}
               config={config}
-              hintStage={hintStage}
               onFocusPiece={focusPieceSmooth}
-              onHint1={handleHint1}
-              onHint2={handleHint2}
+              onUseHint={() => setHintsUsed((h) => h + 1)}
               onToggleNameOnFix={() =>
                 onConfigChange({ ...config, nameOnFix: !config.nameOnFix })
               }
@@ -903,7 +887,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
           }}
           onGoHome={() => {
             setShowConfig(false);
-            handleBackConfirmExit();
+            handleBackToTitle();
           }}
           onClose={() => setShowConfig(false)}
         />

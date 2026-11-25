@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BBox } from '../types/game';
 
+export const MIN_ZOOM_RATIO = 0.65;
+export const MAX_ZOOM_RATIO = 120;
+
 export interface ViewBoxRect {
   x: number;
   y: number;
@@ -181,7 +184,10 @@ export function useMapViewport({
 
   /** Zoom ratio relative to initial bbox width (>= 1 means zoomed in) */
   const baseWidth = bboxToViewBox(initialBBox, containerAspect).w;
-  const zoomRatio = Math.max(0.5, Math.min(60, baseWidth / Math.max(1, viewBox.w)));
+  const zoomRatio = Math.max(
+    0.5,
+    Math.min(MAX_ZOOM_RATIO * 1.25, baseWidth / Math.max(0.25, viewBox.w)),
+  );
 
   /** Scale current viewBox relatively (> 1 always zooms in, < 1 always zooms out) */
   const zoomByFactor = useCallback(
@@ -192,8 +198,8 @@ export function useMapViewport({
       const r = el?.getBoundingClientRect();
       const aspect = r && r.width > 10 && r.height > 10 ? r.width / r.height : containerAspect;
       const initRect = bboxToViewBox(baseBBoxRef.current, aspect);
-      const minW = initRect.w / 48;
-      const maxW = initRect.w / 0.65;
+      const minW = initRect.w / MAX_ZOOM_RATIO;
+      const maxW = initRect.w / MIN_ZOOM_RATIO;
 
       const prev = viewBoxRef.current;
       const nextW = Math.max(minW, Math.min(maxW, prev.w / factor));
@@ -228,7 +234,7 @@ export function useMapViewport({
   const setZoomAtPoint = useCallback(
     (nextZoomRatio: number, clientX?: number, clientY?: number) => {
       stopAnimations();
-      const clampedZoom = Math.max(0.65, Math.min(48, nextZoomRatio));
+      const clampedZoom = Math.max(MIN_ZOOM_RATIO, Math.min(MAX_ZOOM_RATIO, nextZoomRatio));
       const el = svgNodeRef.current;
       const r = el?.getBoundingClientRect();
       const aspect = r && r.width > 10 && r.height > 10 ? r.width / r.height : containerAspect;

@@ -26,6 +26,9 @@ import { MistakeReviewModal } from './MistakeReviewModal';
 import { SaveSlotsModal } from './SaveSlotsModal';
 
 interface TitleScreenProps {
+  initialScreenMode?: 'title' | 'areas';
+  initialCategoryTab?: AreaCategory;
+  onCategoryTabChange?: (tab: AreaCategory) => void;
   areas: AreaDefinition[];
   prefsData: JapanPrefsData | null;
   totalMunis: number;
@@ -77,6 +80,9 @@ const CHANGELOG_ITEMS: { ver: string; notes: string[] }[] = [
 ];
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
+  initialScreenMode = 'title',
+  initialCategoryTab = 'japan',
+  onCategoryTabChange,
   areas,
   prefsData,
   totalMunis,
@@ -95,8 +101,12 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onClearModeMistakes,
   onClearAllMistakes,
 }) => {
-  const [screenMode, setScreenMode] = useState<'title' | 'areas'>('title');
-  const [categoryTab, setCategoryTab] = useState<AreaCategory>('japan');
+  const [screenMode, setScreenMode] = useState<'title' | 'areas'>(initialScreenMode);
+  const [categoryTab, setCategoryTab] = useState<AreaCategory>(initialCategoryTab);
+  const handleSelectCategoryTab = (tab: AreaCategory) => {
+    setCategoryTab(tab);
+    onCategoryTabChange?.(tab);
+  };
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
   const [selectedSubMode, setSelectedSubMode] = useState<AreaSubMode | null>(null);
   const [questionCount, setQuestionCount] = useState<number>(47);
@@ -566,28 +576,28 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             <button
               type="button"
               className={categoryTab === 'japan' ? 'active' : ''}
-              onClick={() => setCategoryTab('japan')}
+              onClick={() => handleSelectCategoryTab('japan')}
             >
               日本（国・自然地理・県庁）
             </button>
             <button
               type="button"
               className={categoryTab === 'prefecture' ? 'active' : ''}
-              onClick={() => setCategoryTab('prefecture')}
+              onClick={() => handleSelectCategoryTab('prefecture')}
             >
               都道府県別（47都道府県）
             </button>
             <button
               type="button"
               className={categoryTab === 'municipalities' ? 'active' : ''}
-              onClick={() => setCategoryTab('municipalities')}
+              onClick={() => handleSelectCategoryTab('municipalities')}
             >
               全国・地方別 市町村
             </button>
             <button
               type="button"
               className={categoryTab === 'cities' ? 'active' : ''}
-              onClick={() => setCategoryTab('cities')}
+              onClick={() => handleSelectCategoryTab('cities')}
             >
               全国・地方別 市
             </button>

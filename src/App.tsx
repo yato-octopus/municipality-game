@@ -28,6 +28,7 @@ import {
   writeAutoSave,
 } from './services/storageService';
 import type {
+  AreaCategory,
   ConfigState,
   GameSessionSpec,
   JapanPrefsData,
@@ -38,9 +39,17 @@ import type {
 } from './types/game';
 
 type AppView =
-  | { kind: 'title' }
+  | { kind: 'title'; screen: 'title' | 'areas' }
   | { kind: 'play'; spec: GameSessionSpec; restored: SavedProgress | null }
   | { kind: 'view'; areaId: string };
+
+function inferCategoryFromSpec(spec: GameSessionSpec): AreaCategory | null {
+  if (spec.areaId === '00_japan') return 'japan';
+  if (spec.areaId === '00_japan_all') return 'municipalities';
+  if (spec.areaId === '00_japan_cities') return 'cities';
+  if (spec.areaId.startsWith('pref_')) return 'prefecture';
+  return null;
+}
 
 export function App() {
   const [prefsData, setPrefsData] = useState<JapanPrefsData | null>(null);
@@ -60,7 +69,8 @@ export function App() {
   const [tags, setTags] = useState<MapTag[]>(() => loadTags());
   const [mistakes, setMistakes] = useState<MistakeEntry[]>(() => loadMistakes());
 
-  const [view, setView] = useState<AppView>({ kind: 'title' });
+  const [view, setView] = useState<AppView>({ kind: 'title', screen: 'title' });
+  const [lastCategoryTab, setLastCategoryTab] = useState<AreaCategory>('japan');
 
   useEffect(() => {
     void Promise.all([loadJapanPrefs(), loadMuniIndex()])
@@ -255,7 +265,12 @@ export function App() {
         onRestartSession={(nextSpec) =>
           setView({ kind: 'play', spec: nextSpec, restored: null })
         }
-        onExitToTitle={() => setView({ kind: 'title' })}
+        onExitToAreas={() => {
+          const inferred = inferCategoryFromSpec(view.spec);
+          if (inferred) setLastCategoryTab(inferred);
+          setView({ kind: 'title', screen: 'areas' });
+        }}
+        onExitToTitle={() => setView({ kind: 'title', screen: 'title' })}
       />
     );
   }
@@ -273,13 +288,16 @@ export function App() {
         onRenameTag={handleRenameTag}
         onToggleLockTag={handleToggleLockTag}
         onDeleteTag={handleDeleteTag}
-        onGoTitle={() => setView({ kind: 'title' })}
+        onGoTitle={() => setView({ kind: 'title', screen: 'title' })}
       />
     );
   }
 
   return (
     <TitleScreen
+      initialScreenMode={view.screen}
+      initialCategoryTab={lastCategoryTab}
+      onCategoryTabChange={setLastCategoryTab}
       areas={areas}
       prefsData={prefsData}
       totalMunis={totalMunis}
@@ -291,9 +309,11 @@ export function App() {
       manualSaves={manualSaves}
       mistakes={mistakes}
       onConfigChange={handleConfigChange}
-      onStartGame={(spec, restore) =>
-        setView({ kind: 'play', spec, restored: restore ?? null })
-      }
+      onStartGame={(spec, restore) => {
+        const inferred = inferCategoryFromSpec(spec);
+        if (inferred) setLastCategoryTab(inferred);
+        setView({ kind: 'play', spec, restored: restore ?? null });
+      }}
       onStartView={(areaId) => setView({ kind: 'view', areaId })}
       onDeleteManualSave={handleDeleteManual}
       onDeleteMistakeEntry={handleDeleteMistakeEntry}
