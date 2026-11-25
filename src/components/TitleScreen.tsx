@@ -50,6 +50,12 @@ interface TitleScreenProps {
 
 const CHANGELOG_ITEMS: { ver: string; notes: string[] }[] = [
   {
+    ver: 'Ver 2.1.0',
+    notes: [
+      '47都道府県・1,747市区町村のSVG境界データを共有アーク位相完全一致方式（0.001単位精度）で再構築し、高倍率拡大時の穴開き・境界ズレ・二重線を解消',
+    ],
+  },
+  {
     ver: 'Ver 2.0.3',
     notes: ['UI 部分上でのピンチイン／ピンチアウト時にブラウザ自体の拡大率が変化しないよう修正'],
   },
