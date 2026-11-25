@@ -17,6 +17,7 @@ interface QuizGameProps {
   disableHelpButton: boolean;
   hintStage: 0 | 1 | 2;
   quizChoiceLayout: QuizChoiceLayout;
+  nameOnFix: boolean;
   hasJumpBar: boolean;
   svgToContainerPoint: (sx: number, sy: number) => SvgContainerPoint | null;
   getSvgRect: () => DOMRect | null;
@@ -25,6 +26,7 @@ interface QuizGameProps {
   onHint1: () => void;
   onHint2: () => void;
   onToggleQuizChoiceLayout: () => void;
+  onToggleNameOnFix: () => void;
   onAnswerResult: (correct: boolean) => void;
 }
 
@@ -133,6 +135,7 @@ export const QuizGame: React.FC<QuizGameProps> = ({
   disableHelpButton,
   hintStage,
   quizChoiceLayout,
+  nameOnFix,
   hasJumpBar,
   svgToContainerPoint,
   getSvgRect,
@@ -141,6 +144,7 @@ export const QuizGame: React.FC<QuizGameProps> = ({
   onHint1,
   onHint2,
   onToggleQuizChoiceLayout,
+  onToggleNameOnFix,
   onAnswerResult,
 }) => {
   const [disabledChoiceIds, setDisabledChoiceIds] = useState<Set<string>>(new Set());
@@ -631,6 +635,14 @@ export const QuizGame: React.FC<QuizGameProps> = ({
         onClick={onToggleQuizChoiceLayout}
       >
         {quizChoiceLayout === 'pointing' ? '📋 下部に選択肢' : '📌 地図上に選択肢'}
+      </button>
+      <button
+        type="button"
+        className={`hud-toggle-btn btn-xs ${nameOnFix ? '' : 'is-off'}`}
+        title="回答後に白地図上へ名前を表示／非表示"
+        onClick={onToggleNameOnFix}
+      >
+        🏷 回答後の名前: {nameOnFix ? 'ON' : 'OFF'}
       </button>
     </div>
   );

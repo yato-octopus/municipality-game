@@ -10,6 +10,7 @@ interface YomikataGameProps {
   onFocusPiece: (piece: MapPieceItem) => void;
   onHint1: () => void;
   onHint2: () => void;
+  onToggleNameOnFix: () => void;
   onAnswerResult: (correct: boolean) => void;
   onMarkMistake: () => void;
 }
@@ -22,6 +23,7 @@ export const YomikataGame: React.FC<YomikataGameProps> = ({
   onFocusPiece,
   onHint1,
   onHint2,
+  onToggleNameOnFix,
   onAnswerResult,
   onMarkMistake,
 }) => {
@@ -167,6 +169,17 @@ export const YomikataGame: React.FC<YomikataGameProps> = ({
               </button>
             </>
           )}
+          <button
+            type="button"
+            className={`hud-toggle-btn btn-xs ${config.nameOnFix ? '' : 'is-off'}`}
+            title="回答後に白地図上へ名前を表示／非表示"
+            onClick={() => {
+              onToggleNameOnFix();
+              inputRef.current?.focus();
+            }}
+          >
+            🏷 回答後の名前: {config.nameOnFix ? 'ON' : 'OFF'}
+          </button>
         </div>
       </div>
 

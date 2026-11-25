@@ -12,6 +12,7 @@ interface PuzzleGameProps {
   onHoverTargetChange: (pieceId: string | null) => void;
   onHint1: () => void;
   onHint2: () => void;
+  onToggleNameOnFix: () => void;
   clientToSvg: (cx: number, cy: number) => [number, number];
   svgScalePxPerUnit: () => number;
 }
@@ -50,6 +51,7 @@ export const PuzzleGame: React.FC<PuzzleGameProps> = ({
   onHoverTargetChange,
   onHint1,
   onHint2,
+  onToggleNameOnFix,
   clientToSvg,
   svgScalePxPerUnit,
 }) => {
@@ -151,7 +153,6 @@ export const PuzzleGame: React.FC<PuzzleGameProps> = ({
   }, [selectedPieceId]);
 
   if (!config.showPieceList) {
-    if (config.disableHelpButton) return null;
     return (
       <div
         className="hint-btn-group"
@@ -159,22 +160,34 @@ export const PuzzleGame: React.FC<PuzzleGameProps> = ({
       >
         <button
           type="button"
-          className="btn-hint1 btn-xs"
-          title="この辺の大きな範囲を表示"
-          disabled={remainingPieces.length === 0}
-          onClick={onHint1}
+          className={`hud-toggle-btn btn-xs ${config.nameOnFix ? '' : 'is-off'}`}
+          title="はめた後に白地図上へ名前を表示／非表示"
+          onClick={onToggleNameOnFix}
         >
-          💡 ヒント1
+          🏷 回答後の名前: {config.nameOnFix ? 'ON' : 'OFF'}
         </button>
-        <button
-          type="button"
-          className="btn-hint2 btn-xs"
-          title="その場所へ直接当てはめる"
-          disabled={remainingPieces.length === 0}
-          onClick={onHint2}
-        >
-          💡 ヒント2
-        </button>
+        {!config.disableHelpButton && (
+          <>
+            <button
+              type="button"
+              className="btn-hint1 btn-xs"
+              title="この辺の大きな範囲を表示"
+              disabled={remainingPieces.length === 0}
+              onClick={onHint1}
+            >
+              💡 ヒント1
+            </button>
+            <button
+              type="button"
+              className="btn-hint2 btn-xs"
+              title="その場所へ直接当てはめる"
+              disabled={remainingPieces.length === 0}
+              onClick={onHint2}
+            >
+              💡 ヒント2
+            </button>
+          </>
+        )}
       </div>
     );
   }
@@ -192,6 +205,14 @@ export const PuzzleGame: React.FC<PuzzleGameProps> = ({
               })()}
           </span>
           <div className="puzzle-tray-ctrls">
+            <button
+              type="button"
+              className={`hud-toggle-btn btn-xs ${config.nameOnFix ? '' : 'is-off'}`}
+              title="はめた後に白地図上へ名前を表示／非表示"
+              onClick={onToggleNameOnFix}
+            >
+              🏷 回答後の名前: {config.nameOnFix ? 'ON' : 'OFF'}
+            </button>
             {!config.disableHelpButton && (
               <div className="hint-btn-group">
                 <button

@@ -22,7 +22,6 @@ interface HudOverlayProps {
   onZoomChange: (nextZoom: number) => void;
   onJumpToBBox: (bbox: BBox) => void;
   onResetZoom: () => void;
-  onToggleNameOnFix: () => void;
   onOpenConfig: () => void;
   onOpenSave?: () => void;
   onBack: () => void;
@@ -49,7 +48,6 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   onZoomChange,
   onJumpToBBox,
   onResetZoom,
-  onToggleNameOnFix,
   onOpenConfig,
   onOpenSave,
   onBack,
@@ -106,14 +104,6 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
         </div>
 
         <div className="hud-actions-group">
-          <button
-            type="button"
-            className={`hud-btn hud-toggle-btn ${config.nameOnFix ? '' : 'is-off'}`}
-            title="はめた後・回答後に白地図上へ名前を表示／非表示"
-            onClick={onToggleNameOnFix}
-          >
-            🏷 回答後の名前: {config.nameOnFix ? 'ON' : 'OFF'}
-          </button>
           {!isCustomOrRandom && onOpenSave && (
             <button type="button" className="hud-btn" onClick={onOpenSave}>
               セーブ

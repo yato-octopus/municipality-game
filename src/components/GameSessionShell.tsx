@@ -145,9 +145,11 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     pieceId: string;
     stage: 0 | 1 | 2;
     area: HintAreaOverlay | null;
+    areaVisible: boolean;
   } | null>(null);
   const [hintFittedPieceId, setHintFittedPieceId] = useState<string | null>(null);
 
+  const hint1ChargedPieceIdsRef = useRef<Set<string>>(new Set());
   const hint2TimerRef = useRef<number | null>(null);
   const hintFittedTimerRef = useRef<number | null>(null);
   const hint2AdvancingPieceIdRef = useRef<string | null>(null);
@@ -554,7 +556,9 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
       ? hintState
       : null;
   const hintStage: 0 | 1 | 2 = activeHintMatch?.stage ?? 0;
-  const hintArea: HintAreaOverlay | null = activeHintMatch?.area ?? null;
+  const hintArea: HintAreaOverlay | null = activeHintMatch?.areaVisible
+    ? activeHintMatch.area
+    : null;
 
   const focusHintAreaSmooth = useCallback(
     (area: HintAreaOverlay) => {
@@ -576,17 +580,25 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         ? selectedPiece ?? remainingPieces[0]
         : activePiece;
     if (!hintTarget) return;
-    if (hintStage >= 1 && hintState?.pieceId === hintTarget.id) {
-      if (hintState.area) {
-        focusHintAreaSmooth(hintState.area);
+    if (hintState?.pieceId === hintTarget.id && hintState.stage >= 2) {
+      return;
+    }
+    if (hintState?.pieceId === hintTarget.id && hintState.stage === 1) {
+      if (hintState.areaVisible) {
+        setHintState({ ...hintState, areaVisible: false });
       } else {
-        focusPieceSmooth(hintTarget);
+        const nextArea = hintState.area ?? computeHint1Area(hintTarget, loadedMap, spec);
+        setHintState({ ...hintState, area: nextArea, areaVisible: true });
+        focusHintAreaSmooth(nextArea);
       }
       return;
     }
 
     const area = computeHint1Area(hintTarget, loadedMap, spec);
-    setHintsUsed((h) => h + 1);
+    if (!hint1ChargedPieceIdsRef.current.has(hintTarget.id)) {
+      hint1ChargedPieceIdsRef.current.add(hintTarget.id);
+      setHintsUsed((h) => h + 1);
+    }
     if (spec.playKind === 'puzzle' && !selectedPiece) {
       setSelectedPiece(hintTarget);
       setInspectedPiece(hintTarget);
@@ -595,6 +607,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
       pieceId: hintTarget.id,
       stage: 1,
       area,
+      areaVisible: true,
     });
     focusHintAreaSmooth(area);
   };
@@ -617,6 +630,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
       pieceId: hintTarget.id,
       stage: 2,
       area: null,
+      areaVisible: false,
     });
     setHintFittedPieceId(hintTarget.id);
     focusPieceSmooth(hintTarget);
@@ -734,9 +748,6 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         onZoomChange={(z) => setZoomAtPoint(z)}
         onJumpToBBox={(bbox) => animateToBBox(bbox)}
         onResetZoom={() => loadedMap && fitBBox(loadedMap.viewBBox)}
-        onToggleNameOnFix={() =>
-          onConfigChange({ ...config, nameOnFix: !config.nameOnFix })
-        }
         onOpenConfig={() => setShowConfig(true)}
         onOpenSave={() => setShowSaveModal(true)}
         onBack={handleBackConfirmExit}
@@ -808,6 +819,9 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
               onHoverTargetChange={setHoverTargetId}
               onHint1={handleHint1}
               onHint2={handleHint2}
+              onToggleNameOnFix={() =>
+                onConfigChange({ ...config, nameOnFix: !config.nameOnFix })
+              }
               clientToSvg={clientToSvg}
               svgScalePxPerUnit={svgScalePxPerUnit}
             />
@@ -822,6 +836,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
               disableHelpButton={config.disableHelpButton}
               hintStage={hintStage}
               quizChoiceLayout={config.quizChoiceLayout}
+              nameOnFix={config.nameOnFix}
               hasJumpBar={showJumpButtons !== 'none'}
               svgToContainerPoint={svgToContainerPoint}
               getSvgRect={getSvgRect}
@@ -835,6 +850,9 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
                   quizChoiceLayout:
                     config.quizChoiceLayout === 'pointing' ? 'bottom' : 'pointing',
                 })
+              }
+              onToggleNameOnFix={() =>
+                onConfigChange({ ...config, nameOnFix: !config.nameOnFix })
               }
               onAnswerResult={(correct) => {
                 if (correct) {
@@ -856,6 +874,9 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
               onFocusPiece={focusPieceSmooth}
               onHint1={handleHint1}
               onHint2={handleHint2}
+              onToggleNameOnFix={() =>
+                onConfigChange({ ...config, nameOnFix: !config.nameOnFix })
+              }
               onAnswerResult={(correct) => {
                 if (correct) {
                   window.setTimeout(() => handlePieceSuccessRef.current(activePiece.id), 120);

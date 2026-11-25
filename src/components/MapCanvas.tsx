@@ -207,11 +207,82 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
   const onZoomByFactorRef = useRef(onZoomByFactor);
   const onPanByRef = useRef(onPanBy);
   const onFinishPanRef = useRef(onFinishPan);
+  const enablePrefHoverTooltipRef = useRef(enablePrefHoverTooltip);
   useEffect(() => {
     onZoomByFactorRef.current = onZoomByFactor;
     onPanByRef.current = onPanBy;
     onFinishPanRef.current = onFinishPan;
+    enablePrefHoverTooltipRef.current = enablePrefHoverTooltip;
+    if (!enablePrefHoverTooltip) {
+      hidePrefTooltip();
+    }
   });
+
+  const updatePrefTooltipAtPoint = useCallback(
+    (clientX: number, clientY: number, pointerType: string) => {
+      if (!enablePrefHoverTooltipRef.current) return;
+      const tip = prefTooltipRef.current;
+      const svg = localSvgRef.current;
+      if (!tip || !svg) return;
+      if ((dragRef.current.active && dragRef.current.moved) || pointerType === 'touch') {
+        if (tip.style.opacity !== '0') {
+          tip.style.opacity = '0';
+        }
+        return;
+      }
+
+      let prefName = '';
+      const els = document.elementsFromPoint(clientX, clientY);
+      for (let i = 0; i < els.length; i += 1) {
+        const el = els[i];
+        if (!svg.contains(el) && el !== svg) {
+          // Stop if an opaque UI overlay (HUD, tray, modal, choice card) is directly under the cursor
+          if (
+            el.closest(
+              '.hud-topbar, .view-topbar, .hud-zoom-rail, .hud-jump-bar, .hud-info-card, .puzzle-tray, .bottom-play-panel, .modal-backdrop, .quiz-pointing-card',
+            )
+          ) {
+            break;
+          }
+          continue;
+        }
+        const attr = el.getAttribute('data-pref-name');
+        if (attr) {
+          prefName = attr;
+          break;
+        }
+        if (el.hasAttribute('data-inset-ocean')) {
+          break;
+        }
+      }
+
+      if (!prefName) {
+        if (tip.style.opacity !== '0') {
+          tip.style.opacity = '0';
+        }
+        return;
+      }
+
+      if (tip.textContent !== prefName) {
+        tip.textContent = prefName;
+      }
+      const tipW = tip.offsetWidth || 84;
+      const tipH = tip.offsetHeight || 28;
+      const pad = 8;
+      const preferredX =
+        clientX + 14 + tipW + pad > window.innerWidth
+          ? clientX - tipW - 14
+          : clientX + 14;
+      const preferredY = clientY - 34 < pad ? clientY + 18 : clientY - 34;
+      const x = Math.max(pad, Math.min(window.innerWidth - tipW - pad, preferredX));
+      const y = Math.max(pad, Math.min(window.innerHeight - tipH - pad, preferredY));
+      tip.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+      if (tip.style.opacity !== '1') {
+        tip.style.opacity = '1';
+      }
+    },
+    [],
+  );
 
   // Bind non-passive wheel & Safari gesture listeners for accurate trackpad pinch + mouse wheel zoom
   useEffect(() => {
@@ -300,7 +371,10 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
       }
 
       const d = dragRef.current;
-      if (!d.active || (d.pointerId != null && e.pointerId !== d.pointerId)) return;
+      if (!d.active || (d.pointerId != null && e.pointerId !== d.pointerId)) {
+        updatePrefTooltipAtPoint(e.clientX, e.clientY, e.pointerType);
+        return;
+      }
       const dx = e.clientX - d.lastX;
       const dy = e.clientY - d.lastY;
       if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > 4) {
@@ -353,20 +427,24 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
           onFinishPanRef.current(vx, vy);
         }
         d.active = false;
+        d.moved = false;
         d.pointerId = null;
         d.samples = [];
+        updatePrefTooltipAtPoint(e.clientX, e.clientY, e.pointerType);
       }
     };
 
     window.addEventListener('pointermove', handleWinMove);
     window.addEventListener('pointerup', handleWinUp);
     window.addEventListener('pointercancel', handleWinUp);
+    window.addEventListener('blur', hidePrefTooltip);
     return () => {
       window.removeEventListener('pointermove', handleWinMove);
       window.removeEventListener('pointerup', handleWinUp);
       window.removeEventListener('pointercancel', handleWinUp);
+      window.removeEventListener('blur', hidePrefTooltip);
     };
-  }, []);
+  }, [updatePrefTooltipAtPoint, hidePrefTooltip]);
 
   const activePoolPieces = poolPieces ?? targetPieces;
   const poolIdSet = useMemo(
@@ -413,57 +491,6 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
       moved: false,
       samples: [{ x: e.clientX, y: e.clientY, t: now }],
     };
-  };
-
-  const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!enablePrefHoverTooltip) return;
-    const tip = prefTooltipRef.current;
-    if (!tip) return;
-    if (dragRef.current.moved || e.pointerType === 'touch') {
-      if (tip.style.opacity !== '0') {
-        tip.style.opacity = '0';
-      }
-      return;
-    }
-
-    let prefName = '';
-    const els = document.elementsFromPoint(e.clientX, e.clientY);
-    for (let i = 0; i < els.length; i += 1) {
-      const el = els[i];
-      const attr = el.getAttribute('data-pref-name');
-      if (attr) {
-        prefName = attr;
-        break;
-      }
-      if (el.hasAttribute('data-inset-ocean')) {
-        break;
-      }
-    }
-
-    if (!prefName) {
-      if (tip.style.opacity !== '0') {
-        tip.style.opacity = '0';
-      }
-      return;
-    }
-
-    if (tip.textContent !== prefName) {
-      tip.textContent = prefName;
-    }
-    const tipW = tip.offsetWidth || 84;
-    const tipH = tip.offsetHeight || 28;
-    const pad = 8;
-    const preferredX =
-      e.clientX + 14 + tipW + pad > window.innerWidth
-        ? e.clientX - tipW - 14
-        : e.clientX + 14;
-    const preferredY = e.clientY - 34 < pad ? e.clientY + 18 : e.clientY - 34;
-    const x = Math.max(pad, Math.min(window.innerWidth - tipW - pad, preferredX));
-    const y = Math.max(pad, Math.min(window.innerHeight - tipH - pad, preferredY));
-    tip.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
-    if (tip.style.opacity !== '1') {
-      tip.style.opacity = '1';
-    }
   };
 
   const handleDoubleClick = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -1428,7 +1455,6 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
           touchAction: 'none',
         }}
         onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
         onPointerLeave={hidePrefTooltip}
         onDoubleClick={handleDoubleClick}
       >
