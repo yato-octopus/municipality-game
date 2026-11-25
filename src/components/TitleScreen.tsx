@@ -74,9 +74,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [questionCount, setQuestionCount] = useState<number>(47);
   const [maxCountForSub, setMaxCountForSub] = useState<number>(47);
 
-  const [autoSaveConfirmPending, setAutoSaveConfirmPending] = useState<(() => void) | null>(
-    null,
-  );
   const [showManualModal, setShowManualModal] = useState(false);
   const [showMistakeModal, setShowMistakeModal] = useState(false);
   const [showCustomModal, setShowCustomModal] = useState(false);
@@ -221,15 +218,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       maxCount: poolIds.length,
       fixedPieceIds,
     };
-    const startFn = () => {
-      setSelectedAreaId(null);
-      onStartGame(spec, null);
-    };
-    if (autoSave) {
-      setAutoSaveConfirmPending(() => startFn);
-    } else {
-      startFn();
-    }
+    setSelectedAreaId(null);
+    onStartGame(spec, null);
   };
 
   const handleStartCustom = async () => {
@@ -794,40 +784,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   はじめからスタート
                 </button>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* AutoSave overwrite confirm */}
-      {autoSaveConfirmPending && (
-        <div className="modal-backdrop" onClick={() => setAutoSaveConfirmPending(null)}>
-          <div className="modal-card confirm-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>確認</h3>
-            </div>
-            <div className="modal-body">
-              <p>既存のオートセーブデータが消去されますがよろしいですか？</p>
-            </div>
-            <div className="modal-footer">
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => setAutoSaveConfirmPending(null)}
-              >
-                いいえ
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => {
-                  const fn = autoSaveConfirmPending;
-                  setAutoSaveConfirmPending(null);
-                  fn();
-                }}
-              >
-                はい（開始する）
-              </button>
             </div>
           </div>
         </div>
