@@ -556,6 +556,19 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
   const hintStage: 0 | 1 | 2 = activeHintMatch?.stage ?? 0;
   const hintArea: HintAreaOverlay | null = activeHintMatch?.area ?? null;
 
+  const focusHintAreaSmooth = useCallback(
+    (area: HintAreaOverlay) => {
+      const pad = Math.max(18, area.r * 1.45);
+      animateToBBox([
+        area.cx - pad,
+        area.cy - pad,
+        area.cx + pad,
+        area.cy + pad,
+      ]);
+    },
+    [animateToBBox],
+  );
+
   const handleHint1 = () => {
     if (config.disableHelpButton || isCompleted || !loadedMap) return;
     const hintTarget =
@@ -563,8 +576,16 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         ? selectedPiece ?? remainingPieces[0]
         : activePiece;
     if (!hintTarget) return;
-    if (hintStage >= 1 && hintState?.pieceId === hintTarget.id) return;
+    if (hintStage >= 1 && hintState?.pieceId === hintTarget.id) {
+      if (hintState.area) {
+        focusHintAreaSmooth(hintState.area);
+      } else {
+        focusPieceSmooth(hintTarget);
+      }
+      return;
+    }
 
+    const area = computeHint1Area(hintTarget, loadedMap, spec);
     setHintsUsed((h) => h + 1);
     if (spec.playKind === 'puzzle' && !selectedPiece) {
       setSelectedPiece(hintTarget);
@@ -573,8 +594,9 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     setHintState({
       pieceId: hintTarget.id,
       stage: 1,
-      area: computeHint1Area(hintTarget, loadedMap, spec),
+      area,
     });
+    focusHintAreaSmooth(area);
   };
 
   const handleHint2 = () => {
@@ -584,7 +606,10 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         ? selectedPiece ?? remainingPieces[0]
         : activePiece;
     if (!hintTarget || completedIds.has(hintTarget.id)) return;
-    if (hintStage >= 2 && hintState?.pieceId === hintTarget.id) return;
+    if (hintStage >= 2 && hintState?.pieceId === hintTarget.id) {
+      focusPieceSmooth(hintTarget);
+      return;
+    }
     if (hint2AdvancingPieceIdRef.current === hintTarget.id) return;
 
     setHintsUsed((h) => h + 1);
@@ -594,6 +619,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
       area: null,
     });
     setHintFittedPieceId(hintTarget.id);
+    focusPieceSmooth(hintTarget);
 
     if (spec.playKind === 'puzzle') {
       if (hintFittedTimerRef.current != null) {
@@ -603,7 +629,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
       hintFittedTimerRef.current = window.setTimeout(() => {
         setHintFittedPieceId((cur) => (cur === hintTarget.id ? null : cur));
         hintFittedTimerRef.current = null;
-      }, 1500);
+      }, 1800);
       return;
     }
 
@@ -615,7 +641,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
       hint2TimerRef.current = window.setTimeout(() => {
         hint2TimerRef.current = null;
         handlePieceSuccessRef.current(hintTarget.id);
-      }, 850);
+      }, 1100);
     }
   };
 

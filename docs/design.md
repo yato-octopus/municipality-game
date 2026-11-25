@@ -103,9 +103,9 @@ municipality-game/
   - React の `setState` を一切起こさず `ref` 経由で `.pref-hover-tooltip` の `textContent`・`transform`・`opacity` を直接更新することで、全国 1,747 市区町村描画中でも 60fps の軽快さを維持する。
 
 ### 3.3 2段階ヒントシステム＆ヘッダー操作 (`GameSessionShell.tsx`, `HudOverlay.tsx`, `MapCanvas.tsx`)
-- **非ズーム設計**: ヒント1・ヒント2の実行時には `focusPieceSmooth` を呼び出さず、ユーザーの現在視野を維持する。
+- **ズーム連動設計**: ヒント1実行時は `focusHintAreaSmooth` で「この辺」サークル全体が収まる範囲へスムーズにズームインし、ヒント2実行時は `focusPieceSmooth` で当てはめ対象の場所へズームインする。
 - **ヒント1 (`hintStage = 1`, `HintAreaOverlay`)**:
-  - マップ幅とピースサイズから適切な大半径を算出し、`piece.id` に基づく決定的オフセット角度で対象ピースを内包する「ヒント1：この辺」点線サークルを描画する。
+  - マップ幅とピースサイズから適切な大半径を算出し、`piece.id` に基づく決定的オフセット角度で対象ピースを内包する「ヒント1：この辺」点線サークルを描画し、その円全体が見える倍率へズームインする。
   - クイズでは決定的に誤答選択肢を2つ除外（`.is-hint-eliminated`）、読み方では頭文字ヒントを表示。
 - **ヒント2 (`hintStage = 2`, `hintFittedPieceId`)**:
   - 対象オブジェクトを地図上の実位置でエメラルド強調＋パルスリング（`.hint-fitted-pulse`）表示し、`config.nameOnFix` の状態に関わらず対象名を一時明示する。
