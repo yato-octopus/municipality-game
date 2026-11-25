@@ -92,7 +92,7 @@ export const MistakeReviewModal: React.FC<MistakeReviewModalProps> = ({
     const prefCodes =
       g.prefFilterCodes && g.prefFilterCodes.length > 0
         ? g.prefFilterCodes
-        : g.mapScope === 'japan_munis'
+        : g.mapScope === 'japan_munis' && !g.regionFilter
           ? (() => {
               const pSet = Array.from(
                 new Set(g.entries.map((e) => e.prefCode).filter((c): c is string => Boolean(c))),

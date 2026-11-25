@@ -12,6 +12,7 @@ interface UseMapViewportOptions {
   initialBBox: BBox;
   dragInertia: number; // 0..1
   fpsMode: 'high' | 'low';
+  onLiveViewBoxChange?: (vb: ViewBoxRect) => void;
 }
 
 function formatViewBox(vb: ViewBoxRect): string {
@@ -49,11 +50,16 @@ export function useMapViewport({
   initialBBox,
   dragInertia,
   fpsMode,
+  onLiveViewBoxChange,
 }: UseMapViewportOptions) {
   const svgNodeRef = useRef<SVGSVGElement | null>(null);
   const [svgEl, setSvgEl] = useState<SVGSVGElement | null>(null);
   const [containerAspect, setContainerAspect] = useState(1.4);
   const baseBBoxRef = useRef<BBox>(initialBBox);
+  const onLiveViewBoxChangeRef = useRef(onLiveViewBoxChange);
+  useEffect(() => {
+    onLiveViewBoxChangeRef.current = onLiveViewBoxChange;
+  }, [onLiveViewBoxChange]);
 
   const [viewBox, setViewBox] = useState<ViewBoxRect>(() =>
     bboxToViewBox(initialBBox, 1.4),
@@ -69,6 +75,7 @@ export function useMapViewport({
     if (el) {
       el.setAttribute('viewBox', formatViewBox(vb));
     }
+    onLiveViewBoxChangeRef.current?.(vb);
   }, []);
 
   const commitViewBox = useCallback(
@@ -344,6 +351,27 @@ export function useMapViewport({
     ];
   }, []);
 
+  const svgToContainerPoint = useCallback(
+    (
+      sx: number,
+      sy: number,
+    ): { x: number; y: number; scale: number; width: number; height: number } | null => {
+      const el = svgNodeRef.current;
+      if (!el) return null;
+      const vb = viewBoxRef.current;
+      const m = computeSvgMetrics(el, vb);
+      if (!m || m.scale <= 0) return null;
+      return {
+        x: m.padX + (sx - vb.x) * m.scale,
+        y: m.padY + (sy - vb.y) * m.scale,
+        scale: m.scale,
+        width: m.rect.width,
+        height: m.rect.height,
+      };
+    },
+    [],
+  );
+
   const svgScalePxPerUnit = useCallback((): number => {
     const el = svgNodeRef.current;
     if (!el) return 1;
@@ -365,6 +393,7 @@ export function useMapViewport({
     panByScreenDelta,
     finishPan,
     clientToSvg,
+    svgToContainerPoint,
     svgScalePxPerUnit,
   };
 }

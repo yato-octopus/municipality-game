@@ -1,7 +1,14 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { getPrefMutedFill } from '../data/prefColors';
 import type { ViewBoxRect } from '../hooks/useMapViewport';
 import type { InsetBoxSpec } from '../services/mapDataLoader';
-import type { ConfigState, GeographyFeature, MapPieceItem, MapTag } from '../types/game';
+import type {
+  ConfigState,
+  GeographyFeature,
+  HintAreaOverlay,
+  MapPieceItem,
+  MapTag,
+} from '../types/game';
 
 interface SafariGestureEvent extends Event {
   scale: number;
@@ -34,6 +41,10 @@ interface MapCanvasProps {
   /** Optional custom highlight IDs (e.g. ViewMode selection or Puzzle snap preview) */
   hoverTargetId?: string | null;
   isTerrainMode?: boolean;
+  enablePrefHoverTooltip?: boolean;
+  enablePrefTint?: boolean;
+  hintArea?: HintAreaOverlay | null;
+  hintFittedPieceId?: string | null;
   onPieceClick?: (piece: MapPieceItem) => void;
   onPanBy: (dx: number, dy: number) => void;
   onFinishPan: (vx: number, vy: number) => void;
@@ -134,12 +145,24 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
   swapCapitalLabel = false,
   hoverTargetId = null,
   isTerrainMode = false,
+  enablePrefHoverTooltip = false,
+  enablePrefTint = false,
+  hintArea = null,
+  hintFittedPieceId = null,
   onPieceClick,
   onPanBy,
   onFinishPan,
   onZoomByFactor,
 }) => {
   const localSvgRef = useRef<SVGSVGElement | null>(null);
+  const prefTooltipRef = useRef<HTMLDivElement | null>(null);
+
+  const hidePrefTooltip = useCallback(() => {
+    const tip = prefTooltipRef.current;
+    if (tip && tip.style.opacity !== '0') {
+      tip.style.opacity = '0';
+    }
+  }, []);
 
   const mergedSvgRef = useCallback(
     (node: SVGSVGElement | null) => {
@@ -283,6 +306,9 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
       if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > 4) {
         d.moved = true;
         localSvgRef.current?.classList.add('is-panning');
+        if (prefTooltipRef.current && prefTooltipRef.current.style.opacity !== '0') {
+          prefTooltipRef.current.style.opacity = '0';
+        }
       }
       if (d.moved) {
         onPanByRef.current(dx, dy);
@@ -364,6 +390,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
 
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    hidePrefTooltip();
     if (e.pointerType === 'mouse') {
       e.preventDefault();
     }
@@ -386,6 +413,57 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
       moved: false,
       samples: [{ x: e.clientX, y: e.clientY, t: now }],
     };
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!enablePrefHoverTooltip) return;
+    const tip = prefTooltipRef.current;
+    if (!tip) return;
+    if (dragRef.current.moved || e.pointerType === 'touch') {
+      if (tip.style.opacity !== '0') {
+        tip.style.opacity = '0';
+      }
+      return;
+    }
+
+    let prefName = '';
+    const els = document.elementsFromPoint(e.clientX, e.clientY);
+    for (let i = 0; i < els.length; i += 1) {
+      const el = els[i];
+      const attr = el.getAttribute('data-pref-name');
+      if (attr) {
+        prefName = attr;
+        break;
+      }
+      if (el.hasAttribute('data-inset-ocean')) {
+        break;
+      }
+    }
+
+    if (!prefName) {
+      if (tip.style.opacity !== '0') {
+        tip.style.opacity = '0';
+      }
+      return;
+    }
+
+    if (tip.textContent !== prefName) {
+      tip.textContent = prefName;
+    }
+    const tipW = tip.offsetWidth || 84;
+    const tipH = tip.offsetHeight || 28;
+    const pad = 8;
+    const preferredX =
+      e.clientX + 14 + tipW + pad > window.innerWidth
+        ? e.clientX - tipW - 14
+        : e.clientX + 14;
+    const preferredY = e.clientY - 34 < pad ? e.clientY + 18 : e.clientY - 34;
+    const x = Math.max(pad, Math.min(window.innerWidth - tipW - pad, preferredX));
+    const y = Math.max(pad, Math.min(window.innerHeight - tipH - pad, preferredY));
+    tip.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+    if (tip.style.opacity !== '1') {
+      tip.style.opacity = '1';
+    }
   };
 
   const handleDoubleClick = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -432,23 +510,48 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
       };
     }, [contextPieces, insetMap, isTerrainMode, bgPrefPieces]);
 
+  const isPrefDirectMode = useMemo(
+    () =>
+      !isTerrainMode &&
+      bgPrefPieces.length > 0 &&
+      contextPieces.length === bgPrefPieces.length &&
+      contextPieces.every((p) => p.id.startsWith('pref_')),
+    [isTerrainMode, bgPrefPieces.length, contextPieces],
+  );
+
+  const showPrefBorderOverlay =
+    enablePrefTint &&
+    !isTerrainMode &&
+    bgPrefPieces.length > 0 &&
+    !isPrefDirectMode &&
+    config.showBorder;
+
   const getPieceStyle = (piece: MapPieceItem) => {
     const isCompleted = completedIds.has(piece.id);
     const isActive = activePieceId === piece.id;
     const isHint = hintPieceId === piece.id;
+    const isHintFitted = hintFittedPieceId === piece.id;
     const isSelected = selectedPieceId === piece.id;
     const isHover = hoverTargetId === piece.id;
     const isInPool = poolIdSet.has(piece.id);
 
-    let fill = config.silhouette ? '#fbfaf6' : getHypsometricColor(piece);
+    let fill = config.silhouette
+      ? enablePrefTint
+        ? getPrefMutedFill(piece.prefCode, false)
+        : '#fbfaf6'
+      : getHypsometricColor(piece);
     let stroke = config.showBorder ? '#475569' : fill;
     let strokeWidth = config.showBorder ? 0.9 : 0.65;
 
     if (!isInPool && contextPieces.length > activePoolPieces.length) {
-      // Context piece outside current geographic sub-region (e.g. non-selected Hokkaido sub-region)
-      fill = config.silhouette ? '#ebeae4' : '#d6dccb';
+      // Context piece outside current geographic sub-region or non-city town/village in cities mode
+      fill = config.silhouette
+        ? enablePrefTint
+          ? getPrefMutedFill(piece.prefCode, true)
+          : '#ebeae4'
+        : '#d6dccb';
       stroke = config.showBorder ? '#94a3b8' : fill;
-      strokeWidth = 0.65;
+      strokeWidth = enablePrefTint && config.silhouette ? 0.6 : 0.65;
     }
 
     if (isCompleted) {
@@ -476,6 +579,11 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
       stroke = '#dc2626';
       strokeWidth = 2.4;
     }
+    if (isHintFitted) {
+      fill = '#86efac';
+      stroke = '#059669';
+      strokeWidth = 2.4;
+    }
 
     return { fill, stroke, strokeWidth };
   };
@@ -488,6 +596,8 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
     const clickable = Boolean(onPieceClick);
     const isTiny = piece.areaPx < 3;
     const isHover = hoverTargetId === piece.id;
+    const piecePrefName =
+      piece.prefName || (piece.id.startsWith('pref_') ? piece.name : '');
     return (
       <g
         key={piece.id}
@@ -496,6 +606,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
       >
         <path
           data-piece-id={piece.id}
+          data-pref-name={piecePrefName}
           d={piece.path}
           fill={st.fill}
           fillRule="evenodd"
@@ -507,6 +618,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
         {isTiny && (
           <circle
             data-piece-id={piece.id}
+            data-pref-name={piecePrefName}
             cx={piece.center[0]}
             cy={piece.center[1]}
             r={smallHitRadius}
@@ -535,6 +647,8 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
             const st = getPieceStyle(piece);
             const isTiny = piece.areaPx < 3;
             const isHover = hoverTargetId === piece.id;
+            const piecePrefName =
+              piece.prefName || (piece.id.startsWith('pref_') ? piece.name : '');
             return (
               <g
                 key={piece.id}
@@ -543,6 +657,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
               >
                 <path
                   data-piece-id={piece.id}
+                  data-pref-name={piecePrefName}
                   d={piece.path}
                   fill={st.fill}
                   fillRule="evenodd"
@@ -554,6 +669,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                 {isTiny && (
                   <circle
                     data-piece-id={piece.id}
+                    data-pref-name={piecePrefName}
                     cx={
                       piece.id === '13421'
                         ? 647.06
@@ -579,14 +695,41 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
     );
   };
 
+  const renderBgPrefPath = (pref: MapPieceItem, keyPrefix: string) => {
+    const useTint = enablePrefTint && config.silhouette;
+    const fill = useTint
+      ? getPrefMutedFill(pref.prefCode, false)
+      : config.silhouette
+        ? '#ecebe4'
+        : '#dfe4d5';
+    const stroke = config.showBorder
+      ? useTint
+        ? '#475569'
+        : '#94a3b8'
+      : fill;
+    const strokeWidth = useTint ? 0.9 : 0.7;
+    return (
+      <path
+        key={`${keyPrefix}-${pref.id}`}
+        data-pref-name={pref.name}
+        d={pref.path}
+        fill={fill}
+        fillRule="evenodd"
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+        pointerEvents={enablePrefHoverTooltip ? 'visiblePainted' : 'none'}
+      />
+    );
+  };
+
   const renderBgPrefectures = () => {
+    if (isPrefDirectMode) return null;
     const okiSpec = insetMap.get('okinawa');
     return bgPrefPieces.map((pref) => {
       if (hidePref13Bg && pref.id === 'pref_13') return null;
       if (pref.isOkinawa && hidePref47Bg) return null;
-      // When bgPrefPieces is used behind single prefecture / terrain mode:
-      const isDirectTarget = !isTerrainMode && contextPieces.length === bgPrefPieces.length;
-      if (isDirectTarget) return null;
       if (pref.isOkinawa && okiSpec) {
         return (
           <g
@@ -594,30 +737,11 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
             clipPath={`url(#${okiSpec.clipId})`}
             transform={`translate(${okiSpec.tx.toFixed(3)}, ${okiSpec.ty.toFixed(3)}) scale(${okiSpec.scale.toFixed(5)})`}
           >
-            <path
-              d={pref.path}
-              fill={config.silhouette ? '#ecebe4' : '#dfe4d5'}
-              fillRule="evenodd"
-              stroke={config.showBorder ? '#94a3b8' : '#ecebe4'}
-              strokeWidth={0.7}
-              vectorEffect="non-scaling-stroke"
-              pointerEvents="none"
-            />
+            {renderBgPrefPath(pref, 'bg-oki')}
           </g>
         );
       }
-      return (
-        <path
-          key={`bg-${pref.id}`}
-          d={pref.path}
-          fill={config.silhouette ? '#ecebe4' : '#dfe4d5'}
-          fillRule="evenodd"
-          stroke={config.showBorder ? '#94a3b8' : '#ecebe4'}
-          strokeWidth={0.7}
-          vectorEffect="non-scaling-stroke"
-          pointerEvents="none"
-        />
-      );
+      return renderBgPrefPath(pref, 'bg');
     });
   };
 
@@ -633,6 +757,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
   const orderedTerrainPieces = useMemo(() => {
     if (!isTerrainMode) return [];
     const statusRank = (id: string): number => {
+      if (id === hintFittedPieceId) return 4;
       if (id === hintPieceId || id === activePieceId) return 3;
       if (id === selectedPieceId) return 2;
       if (completedIds.has(id)) return 1;
@@ -644,7 +769,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
       if (sa !== sb) return sa - sb;
       return TERRAIN_CATEGORY_ORDER[resolveGeoCategory(a)] - TERRAIN_CATEGORY_ORDER[resolveGeoCategory(b)];
     });
-  }, [isTerrainMode, contextPieces, completedIds, activePieceId, hintPieceId, selectedPieceId]);
+  }, [isTerrainMode, contextPieces, completedIds, activePieceId, hintPieceId, hintFittedPieceId, selectedPieceId]);
 
   const renderTerrainLayer = () => {
     if (!isTerrainMode) return null;
@@ -657,8 +782,9 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
           const isCompleted = completedIds.has(f.id);
           const isActive = activePieceId === f.id;
           const isHint = hintPieceId === f.id;
+          const isHintFitted = hintFittedPieceId === f.id;
           const isSelected = selectedPieceId === f.id;
-          const highlighted = isActive || isHint;
+          const highlighted = isHintFitted || isActive || isHint;
           const cat = resolveGeoCategory(f);
           const hasPath = Boolean(f.path && f.path.trim().length > 0);
           const pts = f.linePts ?? [];
@@ -669,11 +795,13 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
 
           if (cat === 'mountain') {
             const [cx, cy] = f.center;
-            const hw = highlighted
-              ? baseMountainHw * 1.18
-              : isSelected
-                ? baseMountainHw * 1.1
-                : baseMountainHw;
+            const hw = isHintFitted
+              ? baseMountainHw * 1.24
+              : highlighted
+                ? baseMountainHw * 1.18
+                : isSelected
+                  ? baseMountainHw * 1.1
+                  : baseMountainHw;
             const h = hw * 1.55;
             const apexY = cy - (h * 2) / 3;
             const baseY = cy + h / 3;
@@ -683,25 +811,29 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
             const sW = hw * 0.36;
             const snowPts = `${cx.toFixed(2)},${apexY.toFixed(2)} ${(cx - sW).toFixed(2)},${sY.toFixed(2)} ${(cx - sW * 0.32).toFixed(2)},${sYLow.toFixed(2)} ${cx.toFixed(2)},${(apexY + h * 0.34).toFixed(2)} ${(cx + sW * 0.32).toFixed(2)},${sYLow.toFixed(2)} ${(cx + sW).toFixed(2)},${sY.toFixed(2)}`;
 
-            const fill = isHint
-              ? '#dc2626'
-              : isActive
-                ? '#ea580c'
-                : isSelected
-                  ? '#0284c7'
-                  : isCompleted
-                    ? '#15803d'
-                    : '#b45309';
+            const fill = isHintFitted
+              ? '#10b981'
+              : isHint
+                ? '#dc2626'
+                : isActive
+                  ? '#ea580c'
+                  : isSelected
+                    ? '#0284c7'
+                    : isCompleted
+                      ? '#15803d'
+                      : '#b45309';
             const fillOpacity = highlighted || isSelected ? 1 : isCompleted ? 0.96 : 0.82;
-            const outline = isHint
-              ? '#7f1d1d'
-              : isActive
-                ? '#9a3412'
-                : isSelected
-                  ? '#0c4a6e'
-                  : isCompleted
-                    ? '#14532d'
-                    : '#78350f';
+            const outline = isHintFitted
+              ? '#059669'
+              : isHint
+                ? '#7f1d1d'
+                : isActive
+                  ? '#9a3412'
+                  : isSelected
+                    ? '#0c4a6e'
+                    : isCompleted
+                      ? '#14532d'
+                      : '#78350f';
 
             return (
               <g
@@ -713,10 +845,10 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                   points={peakPts}
                   fill="#ffffff"
                   stroke="#ffffff"
-                  strokeWidth={highlighted ? 4.4 : isCompleted || isSelected ? 3.2 : 2.6}
+                  strokeWidth={isHintFitted ? 5.2 : highlighted ? 4.4 : isCompleted || isSelected ? 3.2 : 2.6}
                   strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
-                  opacity={highlighted || isCompleted || isSelected ? 0.96 : 0.84}
+                  opacity={highlighted || isCompleted || isSelected ? 0.98 : 0.84}
                 />
                 <polygon
                   points={peakPts}
@@ -724,7 +856,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                   fillOpacity={fillOpacity}
                   stroke={outline}
                   strokeOpacity={highlighted || isCompleted || isSelected ? 1 : 0.88}
-                  strokeWidth={highlighted ? 1.5 : 1.0}
+                  strokeWidth={isHintFitted ? 1.8 : highlighted ? 1.5 : 1.0}
                   strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
                 />
@@ -740,7 +872,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                   r={Math.max(hw * 1.5, viewBox.w * 0.012)}
                   fill="transparent"
                 />
-                {highlighted && (
+                {(isHint || isActive) && !isHintFitted && (
                   <circle
                     cx={cx}
                     cy={cy}
@@ -759,45 +891,53 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
 
           if (cat === 'plain') {
             if (!hasPath && pts.length < 3) return null;
-            const fill = isHint
-              ? '#f97316'
-              : isActive
-                ? '#84cc16'
-                : isSelected
-                  ? '#38bdf8'
-                  : isCompleted
-                    ? '#22c55e'
-                    : '#65a30d';
-            const fillOpacity = isHint
-              ? 0.52
-              : isActive
-                ? 0.58
-                : isSelected
-                  ? 0.44
-                  : isCompleted
-                    ? 0.5
-                    : 0.26;
-            const stroke = isHint
-              ? '#dc2626'
-              : isActive
-                ? '#ea580c'
-                : isSelected
-                  ? '#0284c7'
-                  : isCompleted
-                    ? '#15803d'
-                    : '#4d7c0f';
+            const fill = isHintFitted
+              ? '#10b981'
+              : isHint
+                ? '#f97316'
+                : isActive
+                  ? '#84cc16'
+                  : isSelected
+                    ? '#38bdf8'
+                    : isCompleted
+                      ? '#22c55e'
+                      : '#65a30d';
+            const fillOpacity = isHintFitted
+              ? 0.62
+              : isHint
+                ? 0.52
+                : isActive
+                  ? 0.58
+                  : isSelected
+                    ? 0.44
+                    : isCompleted
+                      ? 0.5
+                      : 0.26;
+            const stroke = isHintFitted
+              ? '#059669'
+              : isHint
+                ? '#dc2626'
+                : isActive
+                  ? '#ea580c'
+                  : isSelected
+                    ? '#0284c7'
+                    : isCompleted
+                      ? '#15803d'
+                      : '#4d7c0f';
             const strokeOpacity = highlighted || isSelected ? 1 : isCompleted ? 0.86 : 0.48;
-            const strokeWidth = isHint
-              ? 2.7
-              : isActive
-                ? 2.4
-                : isSelected
-                  ? 2.0
-                  : isCompleted
-                    ? 1.35
-                    : 0.9;
+            const strokeWidth = isHintFitted
+              ? 2.9
+              : isHint
+                ? 2.7
+                : isActive
+                  ? 2.4
+                  : isSelected
+                    ? 2.0
+                    : isCompleted
+                      ? 1.35
+                      : 0.9;
             const showHalo = highlighted || isSelected;
-            const haloWidth = isHint ? 5.2 : isActive ? 4.8 : 4.0;
+            const haloWidth = isHintFitted ? 5.8 : isHint ? 5.2 : isActive ? 4.8 : 4.0;
 
             return (
               <g
@@ -862,70 +1002,84 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
             const isSmallLake = rawSpan < viewBox.w * 0.04;
             const isVerySmallLake = rawSpan < Math.max(12, viewBox.w * 0.025);
             const showHalo = highlighted || isSelected || isVerySmallLake;
-            const haloWidth = isHint
+            const haloWidth = isHintFitted
               ? isSmallLake
-                ? 8.4
-                : 7.4
-              : isActive
+                ? 8.8
+                : 7.8
+              : isHint
                 ? isSmallLake
-                  ? 7.8
-                  : 6.8
-                : isSelected
+                  ? 8.4
+                  : 7.4
+                : isActive
                   ? isSmallLake
-                    ? 6.4
-                    : 5.6
-                  : isCompleted
-                    ? 4.0
-                    : 3.0;
+                    ? 7.8
+                    : 6.8
+                  : isSelected
+                    ? isSmallLake
+                      ? 6.4
+                      : 5.6
+                    : isCompleted
+                      ? 4.0
+                      : 3.0;
             const haloOpacity = highlighted
-              ? 0.95
+              ? 0.96
               : isSelected
                 ? 0.9
                 : isCompleted
                   ? 0.78
                   : 0.54;
 
-            const fill = isHint
-              ? '#38bdf8'
-              : isActive
-                ? '#0ea5e9'
-                : isSelected
-                  ? '#38bdf8'
-                  : '#0284c7';
-            const fillOpacity = isHint
-              ? 0.96
-              : isActive
-                ? 0.95
-                : isSelected
-                  ? 0.92
-                  : isCompleted
-                    ? 0.88
-                    : 0.66;
-            const stroke = isHint
-              ? '#dc2626'
-              : isActive
-                ? '#ea580c'
-                : isSelected
-                  ? '#0369a1'
-                  : isCompleted
-                    ? '#0c4a6e'
-                    : '#0369a1';
+            const fill = isHintFitted
+              ? '#10b981'
+              : isHint
+                ? '#38bdf8'
+                : isActive
+                  ? '#0ea5e9'
+                  : isSelected
+                    ? '#38bdf8'
+                    : '#0284c7';
+            const fillOpacity = isHintFitted
+              ? 0.98
+              : isHint
+                ? 0.96
+                : isActive
+                  ? 0.95
+                  : isSelected
+                    ? 0.92
+                    : isCompleted
+                      ? 0.88
+                      : 0.66;
+            const stroke = isHintFitted
+              ? '#059669'
+              : isHint
+                ? '#dc2626'
+                : isActive
+                  ? '#ea580c'
+                  : isSelected
+                    ? '#0369a1'
+                    : isCompleted
+                      ? '#0c4a6e'
+                      : '#0369a1';
             const strokeOpacity = highlighted || isSelected ? 1 : isCompleted ? 0.95 : 0.82;
-            const strokeWidth = isHint
+            const strokeWidth = isHintFitted
               ? isSmallLake
-                ? 5.0
-                : 4.4
-              : isActive
+                ? 5.2
+                : 4.6
+              : isHint
                 ? isSmallLake
-                  ? 4.6
-                  : 4.0
-                : isSelected
-                  ? 3.6
-                  : isCompleted
-                    ? 2.4
-                    : isVerySmallLake
-                      ? 2.0
-                      : 1.6;
+                  ? 5.0
+                  : 4.4
+                : isActive
+                  ? isSmallLake
+                    ? 4.6
+                    : 4.0
+                  : isSelected
+                    ? 3.6
+                    : isCompleted
+                      ? 2.4
+                      : isVerySmallLake
+                        ? 2.0
+                        : 1.6;
 
             return (
               <g
@@ -991,7 +1145,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                     fill="transparent"
                   />
                 )}
-                {highlighted && isSmallLake && (
+                {(isHint || isActive) && !isHintFitted && isSmallLake && (
                   <circle
                     cx={f.center[0]}
                     cy={f.center[1]}
@@ -1014,27 +1168,39 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
           if (cat === 'river') {
             if (!hasPath && pts.length < 2) return null;
             const showCasing = highlighted || isSelected || isCompleted;
-            const casingWidth = isHint ? 6.6 : isActive ? 6.0 : isSelected ? 5.2 : 4.2;
-            const casingOpacity = highlighted ? 0.95 : isSelected ? 0.92 : 0.82;
-            const stroke = isHint
-              ? '#dc2626'
-              : isActive
-                ? '#ea580c'
-                : isSelected
-                  ? '#0284c7'
-                  : isCompleted
-                    ? '#1d4ed8'
-                    : '#2563eb';
+            const casingWidth = isHintFitted
+              ? 7.4
+              : isHint
+                ? 6.6
+                : isActive
+                  ? 6.0
+                  : isSelected
+                    ? 5.2
+                    : 4.2;
+            const casingOpacity = highlighted ? 0.96 : isSelected ? 0.92 : 0.82;
+            const stroke = isHintFitted
+              ? '#059669'
+              : isHint
+                ? '#dc2626'
+                : isActive
+                  ? '#ea580c'
+                  : isSelected
+                    ? '#0284c7'
+                    : isCompleted
+                      ? '#1d4ed8'
+                      : '#2563eb';
             const strokeOpacity = highlighted || isSelected ? 1 : isCompleted ? 0.94 : 0.42;
-            const strokeWidth = isHint
-              ? 3.9
-              : isActive
-                ? 3.6
-                : isSelected
-                  ? 3.1
-                  : isCompleted
-                    ? 2.4
-                    : 1.8;
+            const strokeWidth = isHintFitted
+              ? 4.2
+              : isHint
+                ? 3.9
+                : isActive
+                  ? 3.6
+                  : isSelected
+                    ? 3.1
+                    : isCompleted
+                      ? 2.4
+                      : 1.8;
 
             return (
               <g
@@ -1118,53 +1284,67 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
 
           // mountains (山脈・山地・高地)
           if (!hasPath && pts.length < 2) return null;
-          const zoneFill = isSelected ? '#0284c7' : '#9a3412';
-          const zoneFillOpacity = isHint
+          const zoneFill = isHintFitted
+            ? '#10b981'
+            : isSelected
+              ? '#0284c7'
+              : '#9a3412';
+          const zoneFillOpacity = isHintFitted
             ? 0.48
-            : isActive
-              ? 0.46
-              : isSelected
-                ? 0.28
-                : isCompleted
-                  ? 0.34
-                  : 0.18;
-          const zoneStroke = isHint
-            ? '#dc2626'
-            : isActive
-              ? '#ea580c'
-              : isSelected
-                ? '#0284c7'
-                : isCompleted
-                  ? '#7c2d12'
-                  : '#9a3412';
-          const zoneStrokeOpacity = highlighted || isSelected ? 0.9 : isCompleted ? 0.55 : 0.28;
-          const zoneStrokeWidth = isHint
-            ? 2.0
-            : isActive
-              ? 1.7
-              : isSelected
-                ? 1.6
-                : isCompleted
-                  ? 1.1
-                  : 0.8;
+            : isHint
+              ? 0.48
+              : isActive
+                ? 0.46
+                : isSelected
+                  ? 0.28
+                  : isCompleted
+                    ? 0.34
+                    : 0.18;
+          const zoneStroke = isHintFitted
+            ? '#059669'
+            : isHint
+              ? '#dc2626'
+              : isActive
+                ? '#ea580c'
+                : isSelected
+                  ? '#0284c7'
+                  : isCompleted
+                    ? '#7c2d12'
+                    : '#9a3412';
+          const zoneStrokeOpacity = highlighted || isSelected ? 0.95 : isCompleted ? 0.55 : 0.28;
+          const zoneStrokeWidth = isHintFitted
+            ? 2.2
+            : isHint
+              ? 2.0
+              : isActive
+                ? 1.7
+                : isSelected
+                  ? 1.6
+                  : isCompleted
+                    ? 1.1
+                    : 0.8;
 
-          const ridgeStroke = isHint
-            ? '#dc2626'
-            : isActive
-              ? '#ea580c'
-              : isSelected
-                ? '#0284c7'
-                : '#7c2d12';
+          const ridgeStroke = isHintFitted
+            ? '#059669'
+            : isHint
+              ? '#dc2626'
+              : isActive
+                ? '#ea580c'
+                : isSelected
+                  ? '#0284c7'
+                  : '#7c2d12';
           const ridgeOpacity = highlighted || isSelected ? 1 : isCompleted ? 0.9 : 0.56;
-          const ridgeWidth = isHint
-            ? 3.7
-            : isActive
-              ? 3.4
-              : isSelected
-                ? 3.0
-                : isCompleted
-                  ? 2.6
-                  : 2.2;
+          const ridgeWidth = isHintFitted
+            ? 4.0
+            : isHint
+              ? 3.7
+              : isActive
+                ? 3.4
+                : isSelected
+                  ? 3.0
+                  : isCompleted
+                    ? 2.6
+                    : 2.2;
           const showRidgeCasing = highlighted || isSelected;
 
           return (
@@ -1191,8 +1371,8 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                   points={ptsStr}
                   fill="none"
                   stroke="#ffffff"
-                  strokeOpacity={0.92}
-                  strokeWidth={isHint ? 6.2 : isActive ? 5.8 : 4.8}
+                  strokeOpacity={0.94}
+                  strokeWidth={isHintFitted ? 6.8 : isHint ? 6.2 : isActive ? 5.8 : 4.8}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
@@ -1232,174 +1412,367 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
 
   // Pieces eligible to render names / capital pins / tags
   const overlayPieces = isTerrainMode ? contextPieces : contextPieces;
+  const fittedMainPiece =
+    !isTerrainMode && hintFittedPieceId
+      ? mainPieces.find((p) => p.id === hintFittedPieceId) ?? null
+      : null;
 
   return (
-    <svg
-      ref={mergedSvgRef}
-      preserveAspectRatio="xMidYMid meet"
-      className="map-canvas-svg"
-      style={{
-        background: config.silhouette ? '#dcebfa' : '#cfe5f7',
-        touchAction: 'none',
-      }}
-      onPointerDown={handlePointerDown}
-      onDoubleClick={handleDoubleClick}
-    >
-      <defs>
-        {insets.map((ins) => (
-          <clipPath key={ins.clipId} id={ins.clipId}>
-            <rect
-              x={ins.box[0]}
-              y={ins.box[1]}
-              width={ins.box[2] - ins.box[0]}
-              height={ins.box[3] - ins.box[1]}
-            />
-          </clipPath>
-        ))}
-      </defs>
+    <>
+      <svg
+        ref={mergedSvgRef}
+        preserveAspectRatio="xMidYMid meet"
+        className="map-canvas-svg"
+        style={{
+          background: config.silhouette ? '#dcebfa' : '#cfe5f7',
+          touchAction: 'none',
+        }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerLeave={hidePrefTooltip}
+        onDoubleClick={handleDoubleClick}
+      >
+        <defs>
+          {insets.map((ins) => (
+            <clipPath key={ins.clipId} id={ins.clipId}>
+              <rect
+                x={ins.box[0]}
+                y={ins.box[1]}
+                width={ins.box[2] - ins.box[0]}
+                height={ins.box[3] - ins.box[1]}
+              />
+            </clipPath>
+          ))}
+        </defs>
 
-      {/* Background neighboring prefectures / blank map base */}
-      {renderBgPrefectures()}
+        {/* Background neighboring prefectures / blank map base */}
+        {renderBgPrefectures()}
 
-      {/* Main map vector paths */}
-      {renderPieceRawGroup(mainPieces)}
+        {/* Main map vector paths */}
+        {renderPieceRawGroup(mainPieces)}
 
-      {/* Inset frames + transformed island vector paths */}
-      {insets.map((ins) => {
-        const w = ins.box[2] - ins.box[0];
-        const h = ins.box[3] - ins.box[1];
-        const boxPieces =
-          ins.id === 'okinawa' ? okiPieces : ins.id === 'izu' ? izuPieces : ogaPieces;
-        const insetBgPieces =
-          ins.id === 'okinawa' && hidePref47Bg
-            ? bgPrefPieces.filter((p) => p.isOkinawa)
-            : [];
-        return (
-          <g key={`inset-frame-${ins.id}`}>
-            <rect
-              x={ins.box[0]}
-              y={ins.box[1]}
-              width={w}
-              height={h}
-              fill={config.silhouette ? '#dcebfa' : '#cfe5f7'}
-              stroke="#475569"
-              strokeWidth={1.1}
+        {/* Crisp prefecture borders above municipality maps */}
+        {showPrefBorderOverlay && (
+          <g className="pref-border-overlay" pointerEvents="none">
+            {bgPrefPieces.map((pref) => {
+              if (hidePref13Bg && pref.id === 'pref_13') return null;
+              if (pref.isOkinawa && hidePref47Bg) return null;
+              return (
+                <path
+                  key={`pref-border-${pref.id}`}
+                  d={pref.path}
+                  fill="none"
+                  stroke="#334155"
+                  strokeWidth={1.35}
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                  pointerEvents="none"
+                />
+              );
+            })}
+          </g>
+        )}
+
+        {/* Crisp white halo + emerald highlight for Hint 2 fitted piece above neighbors & borders */}
+        {fittedMainPiece && (
+          <g className="hint-fitted-shape" pointerEvents="none">
+            <path
+              d={fittedMainPiece.path}
+              fill="none"
+              stroke="#ffffff"
+              strokeOpacity={0.96}
+              strokeWidth={5.2}
+              strokeLinejoin="round"
               vectorEffect="non-scaling-stroke"
-              rx={1.5}
             />
-            {insetBgPieces.length > 0 && renderPieceRawGroup(insetBgPieces, ins)}
-            {renderPieceRawGroup(boxPieces, ins)}
+            <path
+              d={fittedMainPiece.path}
+              fill="#86efac"
+              fillRule="evenodd"
+              stroke="#059669"
+              strokeWidth={2.4}
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+            />
+          </g>
+        )}
+
+        {/* Inset frames + transformed island vector paths */}
+        {insets.map((ins) => {
+          const w = ins.box[2] - ins.box[0];
+          const h = ins.box[3] - ins.box[1];
+          const boxPieces =
+            ins.id === 'okinawa' ? okiPieces : ins.id === 'izu' ? izuPieces : ogaPieces;
+          const insetBgPieces =
+            ins.id === 'okinawa' && hidePref47Bg && !isPrefDirectMode
+              ? bgPrefPieces.filter((p) => p.isOkinawa)
+              : [];
+          const fittedInsetPiece =
+            !isTerrainMode && hintFittedPieceId
+              ? boxPieces.find((p) => p.id === hintFittedPieceId) ?? null
+              : null;
+          return (
+            <g key={`inset-frame-${ins.id}`}>
+              <rect
+                data-inset-ocean="true"
+                x={ins.box[0]}
+                y={ins.box[1]}
+                width={w}
+                height={h}
+                fill={config.silhouette ? '#dcebfa' : '#cfe5f7'}
+                stroke="#475569"
+                strokeWidth={1.1}
+                vectorEffect="non-scaling-stroke"
+                rx={1.5}
+              />
+              {insetBgPieces.length > 0 && (
+                <g clipPath={`url(#${ins.clipId})`}>
+                  <g
+                    transform={`translate(${ins.tx.toFixed(3)}, ${ins.ty.toFixed(3)}) scale(${ins.scale.toFixed(5)})`}
+                  >
+                    {insetBgPieces.map((pref) => renderBgPrefPath(pref, `inset-bg-${ins.id}`))}
+                  </g>
+                </g>
+              )}
+              {renderPieceRawGroup(boxPieces, ins)}
+              {ins.id === 'okinawa' && showPrefBorderOverlay && insetBgPieces.length > 0 && (
+                <g clipPath={`url(#${ins.clipId})`} pointerEvents="none">
+                  <g
+                    transform={`translate(${ins.tx.toFixed(3)}, ${ins.ty.toFixed(3)}) scale(${ins.scale.toFixed(5)})`}
+                  >
+                    {insetBgPieces.map((pref) => (
+                      <path
+                        key={`inset-pref-border-${pref.id}`}
+                        d={pref.path}
+                        fill="none"
+                        stroke="#334155"
+                        strokeWidth={1.35}
+                        strokeLinejoin="round"
+                        vectorEffect="non-scaling-stroke"
+                        pointerEvents="none"
+                      />
+                    ))}
+                  </g>
+                </g>
+              )}
+              {fittedInsetPiece && (
+                <g clipPath={`url(#${ins.clipId})`} pointerEvents="none">
+                  <g
+                    transform={`translate(${ins.tx.toFixed(3)}, ${ins.ty.toFixed(3)}) scale(${ins.scale.toFixed(5)})`}
+                  >
+                    <path
+                      d={fittedInsetPiece.path}
+                      fill="none"
+                      stroke="#ffffff"
+                      strokeOpacity={0.96}
+                      strokeWidth={5.2}
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                    <path
+                      d={fittedInsetPiece.path}
+                      fill="#86efac"
+                      fillRule="evenodd"
+                      stroke="#059669"
+                      strokeWidth={2.4}
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  </g>
+                </g>
+              )}
+              <text
+                x={ins.box[0] + 3}
+                y={ins.box[1] + Math.max(3, Math.min(11, h * 0.14))}
+                fontSize={Math.max(1.8, Math.min(9, h * 0.11))}
+                fill="#334155"
+                fontWeight={600}
+                pointerEvents="none"
+              >
+                {ins.label}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Terrain 100 overlay layer */}
+        {renderTerrainLayer()}
+
+        {/* Hint 1 approximate "この辺" area circle */}
+        {hintArea && (
+          <g className="hint-area-group" pointerEvents="none">
+            <circle
+              className="hint-area-ring"
+              cx={hintArea.cx}
+              cy={hintArea.cy}
+              r={hintArea.r}
+              fill="rgba(245, 158, 11, 0.16)"
+              stroke="#d97706"
+              strokeWidth={2.6}
+              strokeDasharray="8 5"
+              vectorEffect="non-scaling-stroke"
+            />
             <text
-              x={ins.box[0] + 3}
-              y={ins.box[1] + Math.max(3, Math.min(11, h * 0.14))}
-              fontSize={Math.max(1.8, Math.min(9, h * 0.11))}
-              fill="#334155"
-              fontWeight={600}
-              pointerEvents="none"
+              x={hintArea.cx}
+              y={hintArea.cy - hintArea.r - Math.max(3, viewBox.w * 0.008)}
+              textAnchor="middle"
+              dominantBaseline="auto"
+              fontSize={Math.max(2.5, Math.min(13, viewBox.w / 56))}
+              fontWeight={700}
+              fill="#b45309"
+              stroke="#ffffff"
+              strokeWidth={3}
+              paintOrder="stroke"
+              vectorEffect="non-scaling-stroke"
             >
-              {ins.label}
+              ヒント1：この辺
             </text>
           </g>
-        );
-      })}
+        )}
 
-      {/* Terrain 100 overlay layer */}
-      {renderTerrainLayer()}
+        {/* Hint 2 fitted object pulsing ring */}
+        {hintFittedPieceId &&
+          (() => {
+            const p = overlayPieces.find((x) => x.id === hintFittedPieceId);
+            if (!p) return null;
+            const pieceSpan = Math.max(p.bbox[2] - p.bbox[0], p.bbox[3] - p.bbox[1]);
+            const pulseR = Math.max(
+              Math.min(pieceSpan * 0.55, viewBox.w * 0.06),
+              Math.max(4.5, viewBox.w * 0.024),
+            );
+            return (
+              <g className="hint-fitted-group" pointerEvents="none">
+                <circle
+                  cx={p.center[0]}
+                  cy={p.center[1]}
+                  r={pulseR}
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeOpacity={0.92}
+                  strokeWidth={4.4}
+                  vectorEffect="non-scaling-stroke"
+                />
+                <circle
+                  className="hint-fitted-pulse"
+                  cx={p.center[0]}
+                  cy={p.center[1]}
+                  r={pulseR}
+                  fill="rgba(16, 185, 129, 0.14)"
+                  stroke="#059669"
+                  strokeWidth={2.4}
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            );
+          })()}
 
-      {/* Pulse halo on active/hint non-terrain piece */}
-      {!isTerrainMode &&
-        (hintPieceId || activePieceId) &&
-        (() => {
-          const id = hintPieceId ?? activePieceId;
-          const p = overlayPieces.find((x) => x.id === id);
-          if (!p) return null;
-          return (
-            <circle
-              cx={p.center[0]}
-              cy={p.center[1]}
-              r={Math.max(3.5, viewBox.w * 0.022)}
-              fill="none"
-              stroke={hintPieceId ? '#dc2626' : '#ea580c'}
-              strokeWidth={1.8}
-              strokeDasharray="4 3"
-              vectorEffect="non-scaling-stroke"
-              pointerEvents="none"
-            />
-          );
-        })()}
-
-      {/* Prefectural capital pin marks ◎ */}
-      {showCapitalMarks &&
-        overlayPieces.map((p) =>
-          p.capitalCenter ? (
-            <g key={`cap-${p.id}`} pointerEvents="none">
+        {/* Pulse halo on active/hint non-terrain piece */}
+        {!isTerrainMode &&
+          (hintPieceId || activePieceId) &&
+          (() => {
+            const id = hintPieceId ?? activePieceId;
+            if (!id || id === hintFittedPieceId) return null;
+            const p = overlayPieces.find((x) => x.id === id);
+            if (!p) return null;
+            return (
               <circle
-                cx={p.capitalCenter[0]}
-                cy={p.capitalCenter[1]}
-                r={Math.max(1.5, viewBox.w * 0.0055)}
-                fill="#ef4444"
-                stroke="#ffffff"
-                strokeWidth={0.9}
+                cx={p.center[0]}
+                cy={p.center[1]}
+                r={Math.max(3.5, viewBox.w * 0.022)}
+                fill="none"
+                stroke={hintPieceId ? '#dc2626' : '#ea580c'}
+                strokeWidth={1.8}
+                strokeDasharray="4 3"
                 vectorEffect="non-scaling-stroke"
+                pointerEvents="none"
               />
-            </g>
-          ) : null,
-        )}
+            );
+          })()}
 
-      {/* Tag dots */}
-      {config.showTag &&
-        overlayPieces.map((p) =>
-          taggedIdSet.has(p.id) ? (
-            <circle
-              key={`tag-${p.id}`}
-              cx={p.center[0]}
-              cy={p.center[1] - Math.max(1.2, viewBox.w * 0.006)}
-              r={Math.max(0.9, viewBox.w * 0.004)}
-              fill="#7c3aed"
-              stroke="#ffffff"
-              strokeWidth={0.7}
-              vectorEffect="non-scaling-stroke"
+        {/* Prefectural capital pin marks ◎ */}
+        {showCapitalMarks &&
+          overlayPieces.map((p) =>
+            p.capitalCenter ? (
+              <g key={`cap-${p.id}`} pointerEvents="none">
+                <circle
+                  cx={p.capitalCenter[0]}
+                  cy={p.capitalCenter[1]}
+                  r={Math.max(1.5, viewBox.w * 0.0055)}
+                  fill="#ef4444"
+                  stroke="#ffffff"
+                  strokeWidth={0.9}
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            ) : null,
+          )}
+
+        {/* Tag dots */}
+        {config.showTag &&
+          overlayPieces.map((p) =>
+            taggedIdSet.has(p.id) ? (
+              <circle
+                key={`tag-${p.id}`}
+                cx={p.center[0]}
+                cy={p.center[1] - Math.max(1.2, viewBox.w * 0.006)}
+                r={Math.max(0.9, viewBox.w * 0.004)}
+                fill="#7c3aed"
+                stroke="#ffffff"
+                strokeWidth={0.7}
+                vectorEffect="non-scaling-stroke"
+                pointerEvents="none"
+              />
+            ) : null,
+          )}
+
+        {/* Completed / ViewMode / Hint2-fitted names */}
+        {overlayPieces.map((p) => {
+          const isHintFitted = hintFittedPieceId === p.id;
+          const shouldDraw =
+            isHintFitted ||
+            forceShowNames ||
+            (config.nameOnFix && completedIds.has(p.id));
+          if (!shouldDraw) return null;
+          // Skip extremely crowded labels unless zoomed in close enough (always show Hint 2 fitted piece)
+          const pieceSpan = Math.max(p.bbox[2] - p.bbox[0], p.bbox[3] - p.bbox[1]);
+          if (!isHintFitted && !selectedPieceId && pieceSpan < viewBox.w * 0.012 && !p.isMarker) {
+            return null;
+          }
+          const label =
+            swapCapitalLabel && p.adminAreaLabel ? p.adminAreaLabel : p.name;
+          const labelY =
+            isTerrainMode && resolveGeoCategory(p) === 'mountain'
+              ? p.center[1] + getMountainPeakHalfWidth(viewBox.w) * 0.55 + labelFontSize * 0.65
+              : p.center[1];
+          const thisFontSize = isHintFitted ? Math.max(labelFontSize * 1.12, 3.2) : labelFontSize;
+          return (
+            <text
+              key={`lbl-${p.id}`}
+              x={p.center[0]}
+              y={labelY}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize={thisFontSize}
+              fontWeight={isHintFitted ? 800 : 600}
+              fill={isHintFitted ? '#065f46' : '#0f172a'}
+              stroke={isHintFitted ? 'rgba(255,255,255,0.96)' : 'rgba(255,255,255,0.92)'}
+              strokeWidth={thisFontSize * (isHintFitted ? 0.34 : 0.28)}
+              paintOrder="stroke"
               pointerEvents="none"
-            />
-          ) : null,
-        )}
-
-      {/* Completed / ViewMode names */}
-      {overlayPieces.map((p) => {
-        const shouldDraw =
-          forceShowNames || (config.nameOnFix && completedIds.has(p.id));
-        if (!shouldDraw) return null;
-        // Skip extremely crowded labels unless zoomed in close enough
-        const pieceSpan = Math.max(p.bbox[2] - p.bbox[0], p.bbox[3] - p.bbox[1]);
-        if (!selectedPieceId && pieceSpan < viewBox.w * 0.012 && !p.isMarker) {
-          return null;
-        }
-        const label =
-          swapCapitalLabel && p.adminAreaLabel ? p.adminAreaLabel : p.name;
-        const labelY =
-          isTerrainMode && resolveGeoCategory(p) === 'mountain'
-            ? p.center[1] + getMountainPeakHalfWidth(viewBox.w) * 0.55 + labelFontSize * 0.65
-            : p.center[1];
-        return (
-          <text
-            key={`lbl-${p.id}`}
-            x={p.center[0]}
-            y={labelY}
-            textAnchor="middle"
-            dominantBaseline="central"
-            fontSize={labelFontSize}
-            fontWeight={600}
-            fill="#0f172a"
-            stroke="rgba(255,255,255,0.92)"
-            strokeWidth={labelFontSize * 0.28}
-            paintOrder="stroke"
-            pointerEvents="none"
-          >
-            {label}
-          </text>
-        );
-      })}
-    </svg>
+            >
+              {label}
+            </text>
+          );
+        })}
+      </svg>
+      {enablePrefHoverTooltip && (
+        <div
+          ref={prefTooltipRef}
+          className="pref-hover-tooltip"
+          aria-hidden="true"
+        />
+      )}
+    </>
   );
 };
 

@@ -9,6 +9,10 @@ interface ConfigModalProps {
   onClose: () => void;
 }
 
+type BooleanConfigKey = {
+  [K in keyof ConfigState]: ConfigState[K] extends boolean ? K : never;
+}[keyof ConfigState];
+
 export const ConfigModal: React.FC<ConfigModalProps> = ({
   config,
   onChange,
@@ -16,7 +20,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
   onGoHome,
   onClose,
 }) => {
-  const toggle = (key: keyof ConfigState) => {
+  const toggle = (key: BooleanConfigKey) => {
     onChange({ ...config, [key]: !config[key] });
   };
 
@@ -129,6 +133,20 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                 />
                 <span>地方移動ボタンを逆に並べる</span>
               </label>
+              <label className="config-check">
+                <input
+                  type="checkbox"
+                  checked={config.quizChoiceLayout === 'pointing'}
+                  onChange={() =>
+                    onChange({
+                      ...config,
+                      quizChoiceLayout:
+                        config.quizChoiceLayout === 'pointing' ? 'bottom' : 'pointing',
+                    })
+                  }
+                />
+                <span>クイズ選択肢を地図上にポインティング表示</span>
+              </label>
             </div>
           </section>
 
@@ -179,7 +197,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
                   checked={config.nameOnFix}
                   onChange={() => toggle('nameOnFix')}
                 />
-                <span>完了時</span>
+                <span>完了時（回答後に地図上へ名前表示）</span>
               </label>
             </div>
           </section>

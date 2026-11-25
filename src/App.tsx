@@ -4,9 +4,9 @@ import { TitleScreen } from './components/TitleScreen';
 import { ViewModeScreen } from './components/ViewModeScreen';
 import { buildAreaCatalog } from './data/gameCatalog';
 import {
+  isCityMunicipality,
   loadJapanPrefs,
   loadMuniIndex,
-  loadWorldMap,
 } from './services/mapDataLoader';
 import {
   clearAllMistakes,
@@ -45,7 +45,8 @@ type AppView =
 export function App() {
   const [prefsData, setPrefsData] = useState<JapanPrefsData | null>(null);
   const [totalMunis, setTotalMunis] = useState(1747);
-  const [totalWorld, setTotalWorld] = useState(284);
+  const [totalCities, setTotalCities] = useState(792);
+  const [cityCountByPref, setCityCountByPref] = useState<Record<string, number>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [config, setConfig] = useState<ConfigState>(() => loadConfig());
@@ -62,11 +63,20 @@ export function App() {
   const [view, setView] = useState<AppView>({ kind: 'title' });
 
   useEffect(() => {
-    void Promise.all([loadJapanPrefs(), loadMuniIndex(), loadWorldMap()])
-      .then(([jp, munis, world]) => {
+    void Promise.all([loadJapanPrefs(), loadMuniIndex()])
+      .then(([jp, munis]) => {
         setPrefsData(jp);
         setTotalMunis(munis.length);
-        setTotalWorld(world.regions.length);
+        const cityCounts: Record<string, number> = {};
+        let cityTotal = 0;
+        for (const m of munis) {
+          if (isCityMunicipality(m)) {
+            cityTotal += 1;
+            cityCounts[m.prefCode] = (cityCounts[m.prefCode] ?? 0) + 1;
+          }
+        }
+        setTotalCities(cityTotal);
+        setCityCountByPref(cityCounts);
       })
       .catch((err: unknown) => {
         setLoadError(
@@ -77,8 +87,8 @@ export function App() {
 
   const areas = useMemo(() => {
     if (!prefsData) return [];
-    return buildAreaCatalog(prefsData.prefs, totalMunis, totalWorld);
-  }, [prefsData, totalMunis, totalWorld]);
+    return buildAreaCatalog(prefsData.prefs, totalMunis, totalCities);
+  }, [prefsData, totalMunis, totalCities]);
 
   const handleConfigChange = useCallback((next: ConfigState) => {
     setConfig(next);
@@ -273,7 +283,8 @@ export function App() {
       areas={areas}
       prefsData={prefsData}
       totalMunis={totalMunis}
-      totalWorld={totalWorld}
+      totalCities={totalCities}
+      cityCountByPref={cityCountByPref}
       config={config}
       records={records}
       autoSave={autoSave}

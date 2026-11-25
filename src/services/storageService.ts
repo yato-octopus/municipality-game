@@ -35,6 +35,7 @@ export const DEFAULT_CONFIG: ConfigState = {
   nameOnDrag: true,
   nameOnFix: true,
   dragInertia: 0.65,
+  quizChoiceLayout: 'bottom',
 };
 
 const DEFAULT_TAGS: MapTag[] = [
@@ -66,7 +67,11 @@ function safeWrite<T>(key: string, value: T): void {
 
 export function loadConfig(): ConfigState {
   const saved = safeRead<Partial<ConfigState>>(KEYS.CONFIG, {});
-  return { ...DEFAULT_CONFIG, ...saved };
+  const merged: ConfigState = { ...DEFAULT_CONFIG, ...saved };
+  if (merged.quizChoiceLayout !== 'bottom' && merged.quizChoiceLayout !== 'pointing') {
+    merged.quizChoiceLayout = 'bottom';
+  }
+  return merged;
 }
 
 export function saveConfig(config: ConfigState): void {
@@ -105,8 +110,13 @@ export function recordModeClear(
   return { record: next, isNewBest };
 }
 
+function isLegacyWorldSave(entry: SavedProgress | null | undefined): boolean {
+  return !entry || (entry.spec?.mapScope as string) === 'world';
+}
+
 export function loadAutoSave(): SavedProgress | null {
-  return safeRead<SavedProgress | null>(KEYS.AUTO_SAVE, null);
+  const saved = safeRead<SavedProgress | null>(KEYS.AUTO_SAVE, null);
+  return isLegacyWorldSave(saved) ? null : saved;
 }
 
 export function writeAutoSave(progress: SavedProgress | null): void {
@@ -122,7 +132,8 @@ export function writeAutoSave(progress: SavedProgress | null): void {
 }
 
 export function loadManualSaves(): SavedProgress[] {
-  return safeRead<SavedProgress[]>(KEYS.MANUAL_SAVES, []);
+  const list = safeRead<SavedProgress[]>(KEYS.MANUAL_SAVES, []);
+  return list.filter((entry) => !isLegacyWorldSave(entry));
 }
 
 export function upsertManualSave(save: SavedProgress): SavedProgress[] {
@@ -153,7 +164,8 @@ export function saveTags(tags: MapTag[]): void {
 }
 
 export function loadMistakes(): MistakeEntry[] {
-  return safeRead<MistakeEntry[]>(KEYS.MISTAKES, []);
+  const list = safeRead<MistakeEntry[]>(KEYS.MISTAKES, []);
+  return list.filter((entry) => Boolean(entry) && (entry.mapScope as string) !== 'world');
 }
 
 export function saveMistakes(entries: MistakeEntry[]): void {

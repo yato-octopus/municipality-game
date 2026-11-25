@@ -10,7 +10,8 @@ interface PuzzleGameProps {
   onSelectPiece: (piece: MapPieceItem | null) => void;
   onPlaceAttempt: (pieceId: string, hitSuccess: boolean) => void;
   onHoverTargetChange: (pieceId: string | null) => void;
-  onHelp: () => void;
+  onHint1: () => void;
+  onHint2: () => void;
   clientToSvg: (cx: number, cy: number) => [number, number];
   svgScalePxPerUnit: () => number;
 }
@@ -47,7 +48,8 @@ export const PuzzleGame: React.FC<PuzzleGameProps> = ({
   onSelectPiece,
   onPlaceAttempt,
   onHoverTargetChange,
-  onHelp,
+  onHint1,
+  onHint2,
   clientToSvg,
   svgScalePxPerUnit,
 }) => {
@@ -151,9 +153,29 @@ export const PuzzleGame: React.FC<PuzzleGameProps> = ({
   if (!config.showPieceList) {
     if (config.disableHelpButton) return null;
     return (
-      <button type="button" className="floating-hint-btn" onClick={onHelp}>
-        ？ヒント
-      </button>
+      <div
+        className="hint-btn-group"
+        style={{ position: 'fixed', right: 14, bottom: 14, zIndex: 35 }}
+      >
+        <button
+          type="button"
+          className="btn-hint1 btn-xs"
+          title="この辺の大きな範囲を表示"
+          disabled={remainingPieces.length === 0}
+          onClick={onHint1}
+        >
+          💡 ヒント1
+        </button>
+        <button
+          type="button"
+          className="btn-hint2 btn-xs"
+          title="その場所へ直接当てはめる"
+          disabled={remainingPieces.length === 0}
+          onClick={onHint2}
+        >
+          💡 ヒント2
+        </button>
+      </div>
     );
   }
 
@@ -171,13 +193,26 @@ export const PuzzleGame: React.FC<PuzzleGameProps> = ({
           </span>
           <div className="puzzle-tray-ctrls">
             {!config.disableHelpButton && (
-              <button
-                type="button"
-                className="btn-warning btn-xs"
-                onClick={onHelp}
-              >
-                ？ヒント
-              </button>
+              <div className="hint-btn-group">
+                <button
+                  type="button"
+                  className="btn-hint1 btn-xs"
+                  title="この辺の大きな範囲を表示"
+                  disabled={remainingPieces.length === 0}
+                  onClick={onHint1}
+                >
+                  💡 ヒント1
+                </button>
+                <button
+                  type="button"
+                  className="btn-hint2 btn-xs"
+                  title="その場所へ直接当てはめる"
+                  disabled={remainingPieces.length === 0}
+                  onClick={onHint2}
+                >
+                  💡 ヒント2
+                </button>
+              </div>
             )}
             <button
               type="button"

@@ -27,7 +27,7 @@ MUNI_INDEX_PATH = ROOT_DIR / "public" / "data" / "muni" / "index.json"
 MUNI_PATHS_PATH = ROOT_DIR / "public" / "data" / "muni" / "all_paths.json"
 OUT_PATH = Path(__file__).resolve().parent / "geo_sources" / "lakes.json"
 
-USER_AGENT = "municipality-game-geo-builder/1.0 (https://github.com/tomoyamiyake/municipality-game)"
+USER_AGENT = "municipality-game-geo-builder/1.0"
 
 # Exact Japan Mercator projection (verbatim from scripts/build_map_data.py)
 JP_REF_LON_MIN = 128.2

@@ -10,8 +10,6 @@ import type {
   MapPieceItem,
   MunicipalityMeta,
   PrefectureMeta,
-  WorldMapData,
-  WorldRegionMeta,
 } from '../types/game';
 
 export interface InsetBoxSpec {
@@ -44,7 +42,6 @@ let prefsPromise: Promise<JapanPrefsData> | null = null;
 let muniIndexPromise: Promise<MunicipalityMeta[]> | null = null;
 let muniPathsPromise: Promise<Record<string, string>> | null = null;
 let geo100Promise: Promise<GeographyFeature[]> | null = null;
-let worldPromise: Promise<WorldMapData> | null = null;
 
 async function fetchJson<T>(relPath: string): Promise<T> {
   const res = await fetch(`${DATA_BASE}/${relPath}`);
@@ -74,9 +71,8 @@ export function loadGeography100(): Promise<GeographyFeature[]> {
   return geo100Promise;
 }
 
-export function loadWorldMap(): Promise<WorldMapData> {
-  if (!worldPromise) worldPromise = fetchJson<WorldMapData>('world_map.json');
-  return worldPromise;
+export function isCityMunicipality(m: Pick<MunicipalityMeta, 'name'>): boolean {
+  return m.name.endsWith('市');
 }
 
 /** Normalize kana for Yomikata checking (keep hiragana + prolonged mark) */
@@ -304,28 +300,6 @@ function geoToPiece(f: GeographyFeature): MapPieceItem {
   };
 }
 
-function worldToPiece(r: WorldRegionMeta, path: string): MapPieceItem {
-  return {
-    id: r.id,
-    name: r.name,
-    ruby: r.ruby,
-    answerKanji: r.name,
-    answerRuby: r.ruby,
-    population: r.population,
-    areaKm2: r.areaKm2,
-    regionLabel: r.place,
-    adminAreaLabel: r.en,
-    countyLabel: r.alpha3,
-    wiki: r.wiki,
-    path,
-    geometryType: 'path',
-    bbox: r.bbox,
-    center: r.center,
-    areaPx: r.areaPx,
-    isMarker: r.isMarker,
-  };
-}
-
 export function shuffleArray<T>(items: readonly T[]): T[] {
   const arr = [...items];
   for (let i = arr.length - 1; i > 0; i -= 1) {
@@ -346,6 +320,21 @@ function filterMunisByRegion(
     filtered = filtered.filter((m) => set.has(m.prefCode));
   }
   if (!regionFilter) return filtered;
+
+  if (regionFilter === 'cities_all' || regionFilter === 'cities_custom') {
+    return filtered.filter(isCityMunicipality);
+  }
+  if (regionFilter === 'cities_Hokkaido') {
+    return filtered.filter((m) => m.prefCode === '01' && isCityMunicipality(m));
+  }
+  if (regionFilter.startsWith('cities_')) {
+    const tihouKey = regionFilter.slice('cities_'.length);
+    const cityTihou = TIHOU_MUNI_GROUPS.find((t) => t.key === tihouKey);
+    if (cityTihou) {
+      const tSet = new Set(cityTihou.prefCodes);
+      return filtered.filter((m) => tSet.has(m.prefCode) && isCityMunicipality(m));
+    }
+  }
 
   const tihou = TIHOU_MUNI_GROUPS.find((t) => t.key === regionFilter);
   if (tihou) {
@@ -368,50 +357,7 @@ function filterMunisByRegion(
   return filtered;
 }
 
-const WORLD_SUB_VIEWBOX: Record<string, BBox> = {
-  world_europe: [425, 32, 635, 178],
-  world_africa: [432, 152, 650, 412],
-  world_middle_east: [565, 130, 700, 255],
-  world_asia: [590, 32, 955, 290],
-  world_asia_south_east: [718, 172, 895, 305],
-  world_oceania: [780, 232, 995, 455],
-  world_america: [25, 32, 418, 458],
-};
-
 export async function loadSessionMap(spec: GameSessionSpec): Promise<LoadedSessionMap> {
-  if (spec.mapScope === 'world') {
-    const world = await loadWorldMap();
-    const allPieces = world.regions.map((r) => worldToPiece(r, world.paths[r.id] ?? ''));
-    const pool = spec.regionFilter
-      ? world.regions
-          .filter((r) => r.modes.includes(spec.regionFilter!))
-          .map((r) => worldToPiece(r, world.paths[r.id] ?? ''))
-      : allPieces;
-
-    const targetIds = spec.fixedPieceIds ? new Set(spec.fixedPieceIds) : null;
-    const targets = targetIds
-      ? spec.fixedPieceIds!
-          .map((id) => pool.find((p) => p.id === id))
-          .filter((x): x is MapPieceItem => Boolean(x))
-      : pool;
-
-    const viewBBox: BBox =
-      spec.regionFilter && WORLD_SUB_VIEWBOX[spec.regionFilter]
-        ? WORLD_SUB_VIEWBOX[spec.regionFilter]
-        : [0, 12, 1000, 475];
-
-    return {
-      targetPieces: targets,
-      contextPieces: allPieces,
-      allPoolPieces: pool,
-      bgPrefPieces: [],
-      viewBBox,
-      insets: [],
-      okinawaTransform: null,
-      tokyoInsetTransforms: { izu: null, ogasawara: null },
-    };
-  }
-
   const prefsData = await loadJapanPrefs();
   const isOkinawaOnly =
     spec.prefFilterCodes?.length === 1 && spec.prefFilterCodes[0] === '47';
@@ -547,13 +493,37 @@ export async function loadSessionMap(spec: GameSessionSpec): Promise<LoadedSessi
     muniToPiece(m, muniPaths[m.code] ?? '', prefNameMap, okiTransform, tokyoInsetTransforms),
   );
 
-  // Context pieces = all munis of same pref when zoomed in on a subregion (e.g. 道央 shows all 北海道 munis; 23区 shows all 東京都 munis!)
-  const contextRaw =
-    spec.regionFilter && spec.prefFilterCodes?.length === 1
-      ? muniIndex.filter((m) => m.prefCode === spec.prefFilterCodes![0])
-      : filteredRaw;
+  const isCitiesMode = Boolean(spec.regionFilter?.startsWith('cities_'));
+  const isAllJapanCities =
+    spec.regionFilter === 'cities_all' ||
+    (spec.regionFilter === 'cities_custom' && (!spec.prefFilterCodes || spec.prefFilterCodes.length === 0));
+
+  // Context pieces = all munis in the relevant scope so non-target towns/villages render cleanly as muted context land
+  let contextRaw: MunicipalityMeta[];
+  if (isAllJapanCities) {
+    contextRaw = muniIndex;
+  } else if (spec.regionFilter === 'cities_Hokkaido') {
+    contextRaw = muniIndex.filter((m) => m.prefCode === '01');
+  } else if (spec.regionFilter === 'cities_custom') {
+    const set = new Set(spec.prefFilterCodes ?? []);
+    contextRaw = muniIndex.filter((m) => set.has(m.prefCode));
+  } else if (isCitiesMode && spec.regionFilter) {
+    const tihouKey = spec.regionFilter.slice('cities_'.length);
+    const cityTihou = TIHOU_MUNI_GROUPS.find((t) => t.key === tihouKey);
+    if (cityTihou) {
+      const tSet = new Set(cityTihou.prefCodes);
+      contextRaw = muniIndex.filter((m) => tSet.has(m.prefCode));
+    } else {
+      contextRaw = filteredRaw;
+    }
+  } else if (spec.regionFilter && spec.prefFilterCodes?.length === 1) {
+    contextRaw = muniIndex.filter((m) => m.prefCode === spec.prefFilterCodes![0]);
+  } else {
+    contextRaw = filteredRaw;
+  }
+
   const contextPieces =
-    contextRaw.length === filteredRaw.length
+    contextRaw === filteredRaw
       ? pool
       : contextRaw.map((m) =>
           muniToPiece(m, muniPaths[m.code] ?? '', prefNameMap, okiTransform, tokyoInsetTransforms),
@@ -566,7 +536,11 @@ export async function loadSessionMap(spec: GameSessionSpec): Promise<LoadedSessi
     : pool;
 
   const insets: InsetBoxSpec[] = [];
-  if (okiTransform && (!spec.prefFilterCodes || spec.prefFilterCodes.includes('47') || spec.prefFilterCodes.length === 47)) {
+  const needsOkinawaInset =
+    isAllJapanCities ||
+    (!spec.prefFilterCodes && !isCitiesMode) ||
+    Boolean(spec.prefFilterCodes && (spec.prefFilterCodes.includes('47') || spec.prefFilterCodes.length === 47));
+  if (okiTransform && needsOkinawaInset) {
     insets.push({
       id: 'okinawa',
       label: '沖縄県',
@@ -578,6 +552,10 @@ export async function loadSessionMap(spec: GameSessionSpec): Promise<LoadedSessi
   if (tokyoIzuSpec) insets.push(tokyoIzuSpec);
   if (tokyoOgaSpec) insets.push(tokyoOgaSpec);
 
+  const spansOkinawaAndMainland = Boolean(
+    spec.prefFilterCodes && spec.prefFilterCodes.includes('47') && spec.prefFilterCodes.length > 1,
+  );
+
   let viewBBox: BBox;
   if (isTokyoIslandOnly) {
     viewBBox = [510, 626, 598, 760];
@@ -585,7 +563,13 @@ export async function loadSessionMap(spec: GameSessionSpec): Promise<LoadedSessi
     viewBBox = [504, 571, 560, 650];
   } else if (isSingleTokyo && (spec.regionFilter === 'tokyo23' || spec.regionFilter === 'tokyo23Other')) {
     viewBBox = unionBBoxes(pool.map((p) => p.bbox), 0.14);
-  } else if (!spec.prefFilterCodes && !spec.regionFilter) {
+  } else if (isAllJapanCities || (isCitiesMode && spansOkinawaAndMainland)) {
+    viewBBox = [22, 34, 940, 920];
+  } else if (isCitiesMode) {
+    const nonIslandContext = contextPieces.filter((p) => !p.isTokyoIsland);
+    const basis = nonIslandContext.length > 0 ? nonIslandContext : contextPieces;
+    viewBBox = unionBBoxes(basis.map((p) => p.bbox), 0.08);
+  } else if ((!spec.prefFilterCodes && !spec.regionFilter) || spansOkinawaAndMainland) {
     viewBBox = [22, 34, 940, 920];
   } else {
     viewBBox = unionBBoxes(pool.map((p) => p.bbox), 0.12);
@@ -610,13 +594,6 @@ export async function getModePoolIds(
   regionFilter?: string,
   geoCategory?: GameSessionSpec['geoCategory'],
 ): Promise<string[]> {
-  if (mapScope === 'world') {
-    const world = await loadWorldMap();
-    const list = regionFilter
-      ? world.regions.filter((r) => r.modes.includes(regionFilter))
-      : world.regions;
-    return list.map((r) => r.id);
-  }
   if (mapScope === 'japan_prefs') {
     const prefs = await loadJapanPrefs();
     const list =

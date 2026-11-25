@@ -55,7 +55,7 @@ export const ResultOverlay: React.FC<ResultOverlayProps> = ({
   }
 
   const timeStr = formatTimeMs(elapsedMs);
-  const shareText = `${areaName} ${modeLabel} を ${timeStr} でクリア！ #市区町村パズル #市町村パズル #世界パズル`;
+  const shareText = `${areaName} ${modeLabel} を ${timeStr} でクリア！ #市区町村パズル #市町村パズル`;
 
   const handleShare = async () => {
     if (navigator.share) {

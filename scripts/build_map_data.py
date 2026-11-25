@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate accurate blank-map vector datasets and metadata JSONs.
+"""Generate accurate Japan blank-map vector datasets and metadata JSONs.
 
 Data sources:
-- Geography: smartnews-smri/japan-topography (N03-21, MIT/CC0) & world-atlas 50m (Natural Earth, ISC)
+- Geography: smartnews-smri/japan-topography (N03-21, MIT/CC0)
 - Attributes: statistical/geographical CSV & JSON inputs in RAW_DATA_DIR
 """
 
@@ -43,14 +43,6 @@ JP_MERC_SCALE = JP_SCALE * (180.0 / math.pi)
 def project_jp(lon: float, lat: float) -> tuple[float, float]:
     x = JP_ORIGIN_X + (lon - JP_REF_LON_MIN) * JP_SCALE
     y = JP_ORIGIN_Y + (JP_MERC_Y_MAX - merc_y(lat)) * JP_MERC_SCALE
-    return round(x, 2), round(y, 2)
-
-
-# World Equirectangular projection (viewBox 0..1000 x 0..500, lon -180..180, lat -60..84)
-def project_world(lon: float, lat: float) -> tuple[float, float]:
-    x = (lon + 180.0) / 360.0 * 1000.0
-    lat_c = max(-62.0, min(84.0, lat))
-    y = (84.0 - lat_c) / 146.0 * 500.0
     return round(x, 2), round(y, 2)
 
 
@@ -546,243 +538,21 @@ def build_geography_100(pref_out: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-def build_world_map() -> tuple[list[dict[str, Any]], dict[str, str]]:
-    w_tj = json.load(open(GEO_DIR / "countries-50m.json", encoding="utf-8"))
-    w_arcs = decode_topojson_arcs(w_tj)
-    w_geoms = w_tj["objects"]["countries"]["geometries"]
-
-    by_num: dict[str, dict[str, Any]] = {}
-    by_name: dict[str, dict[str, Any]] = {}
-    for g in w_geoms:
-        gid = str(g.get("id") or "").strip()
-        if gid.isdigit():
-            by_num[str(int(gid))] = g
-        pname = str(g.get("properties", {}).get("name") or "").strip().lower()
-        if pname:
-            by_name[pname] = g
-
-    world_lists = json.load(open(RAW_DIR / "world_lists.json", encoding="utf-8"))
-    mode_by_id: dict[str, list[str]] = {}
-    for m_key, items in world_lists.items():
-        if m_key == "world":
-            continue
-        for it in items:
-            en_id = it.split("_", 1)[0]
-            mode_by_id.setdefault(en_id, []).append(m_key)
-
-    # Approximate lon/lat for tiny islands/micro-entities not separated as top-level geometries in 50m
-    MICRO_COORDS: dict[str, tuple[float, float]] = {
-        "Abkhazia": (41.0, 43.0),
-        "Arunachal Pradesh": (94.7, 28.2),
-        "Kashmir": (75.5, 34.1),
-        "Guadeloupe": (-61.55, 16.25),
-        "Christmas Island": (105.63, -10.48),
-        "Crimea": (34.4, 45.3),
-        "Cocos (Keeling) Islands": (96.83, -12.17),
-        "Golan Heights": (35.75, 33.0),
-        "Gibraltar": (-5.35, 36.14),
-        "Svalbard": (19.0, 78.2),
-        "Tuvalu": (179.2, -8.5),
-        "Tokelau": (-171.8, -9.2),
-        "Halaib Triangle": (36.0, 22.4),
-        "French Guiana": (-53.1, 3.9),
-        "French Southern Territories": (69.3, -49.3),
-        "Bonaire": (-68.27, 12.18),
-        "Mayotte": (45.16, -12.82),
-        "Martinique": (-61.02, 14.64),
-        "Reunion": (55.53, -21.12),
-        "Paracel Islands": (112.3, 16.5),
-        "Zhongsha Island": (114.5, 15.8),
-        "Pratas Islands": (116.72, 20.7),
-        "South Ossetia": (44.0, 42.3),
-        "Spratly Islands": (114.3, 10.2),
-        "North And South Sudan": (28.3, 9.6),
-        "Northern Cyprus": (33.6, 35.25),
-        "Northern Territories": (146.5, 44.3),
-        "Hawaiian Islands": (-155.5, 19.7),
-        "Alaska": (-152.0, 64.0),
-        "Easter Island": (-109.35, -27.12),
-        "Bouvet Island": (3.36, -54.42),
-        "Ascension Island": (-14.37, -7.94),
-        "Tristan da Cunha": (-12.28, -37.11),
-        "Prince Edward Islands": (37.7, -46.9),
-        "Galapagos Islands": (-90.35, -0.6),
-        "Azores": (-27.2, 38.6),
-        "Madeira Islands": (-16.95, 32.75),
-        "Canary Islands": (-15.6, 28.1),
-        "Jan Mayen Island": (-8.3, 71.03),
-        "South Sandwich Islands": (-26.5, -57.8),
-        "Grenadines": (-61.25, 12.8),
-        "McDonald Islands": (73.5, -53.05),
-        "Sint Eustatius": (-62.98, 17.49),
-        "Saba": (-63.23, 17.63),
-        "Takesima": (131.86, 37.24),
-        "Senkaku Islands": (123.47, 25.74),
-        "Kaliningradskaya": (21.1, 54.7),
-        "Minamitorisima": (153.98, 24.29),
-        "Okinotorisima": (136.08, 20.42),
-        "Vatican": (12.45, 41.9),
-        "Monaco": (7.42, 43.74),
-        "Nauru": (166.93, -0.52),
-        "Maldives": (73.51, 3.2),
-        "Singapore": (103.82, 1.35),
-        "Bahrain": (50.55, 26.07),
-        "Malta": (14.43, 35.9),
-    }
-
-    # Helper: filter rings of US/Russia/France/etc when extracting sub-territories or excluding Alaska/Hawaii/Kaliningrad/French Guiana
-    def extract_filtered_rings(base_geom: dict[str, Any], pred) -> list[list[tuple[float, float]]]:
-        rings = dissolve_rings(w_arcs, [base_geom])
-        out_r = []
-        for r in rings:
-            cx = sum(p[0] for p in r) / len(r)
-            cy = sum(p[1] for p in r) / len(r)
-            if pred(cx, cy, r):
-                out_r.append(r)
-        return out_r
-
-    def make_marker_ring(lon: float, lat: float, radius_deg: float = 1.65) -> list[list[tuple[float, float]]]:
-        pts = []
-        for k in range(12):
-            ang = 2 * math.pi * k / 12
-            pts.append((lon + radius_deg * math.cos(ang), lat + radius_deg * 0.72 * math.sin(ang)))
-        return [pts]
-
-    world_out: list[dict[str, Any]] = []
-    world_paths: dict[str, str] = {}
-
-    with open(TEXT_DIR / "world.txt", encoding="utf-8-sig") as f:
-        rows = list(csv.reader(f))[2:]
-
-    for r in rows:
-        if len(r) < 14:
-            continue
-        eid = clean_str(r[0])
-        name = clean_str(r[1])
-        ruby = clean_str(r[2])
-        pop = parse_int(r[3])
-        area = parse_float(r[4])
-        en = clean_str(r[5])
-        un = clean_str(r[6]) == "○"
-        jp_rec = clean_str(r[7]) == "○"
-        a3 = clean_str(r[8])
-        a2 = clean_str(r[9])
-        place = clean_str(r[10])
-        place_en = clean_str(r[11])
-        num = clean_str(r[12])
-        wiki = clean_str(r[13])
-
-        rings: list[list[tuple[float, float]]] = []
-        is_marker = False
-        # Special splits from parent multipolygons in Natural Earth 50m:
-        if eid == "Alaska" and "840" in by_num:
-            rings = extract_filtered_rings(by_num["840"], lambda cx, cy, _: cy > 51.0)
-        elif eid == "Hawaiian Islands" and "840" in by_num:
-            rings = extract_filtered_rings(by_num["840"], lambda cx, cy, _: cx < -150.0 and cy < 30.0)
-        elif eid == "United States" and "840" in by_num:
-            rings = extract_filtered_rings(by_num["840"], lambda cx, cy, _: -130.0 < cx < -65.0 and 24.0 < cy < 50.0)
-        elif eid == "French Guiana" and "250" in by_num:
-            rings = extract_filtered_rings(by_num["250"], lambda cx, cy, _: cx < -40.0 and -10.0 < cy < 15.0)
-        elif eid == "France" and "250" in by_num:
-            rings = extract_filtered_rings(by_num["250"], lambda cx, cy, _: cx > -10.0 and cy > 35.0)
-        elif eid == "Kaliningradskaya" and "643" in by_num:
-            rings = extract_filtered_rings(by_num["643"], lambda cx, cy, _: 18.0 < cx < 24.0 and 53.0 < cy < 56.5)
-        elif eid == "Russian Federation" and "643" in by_num:
-            # Handle antimeridian wrap + exclude Kaliningrad exclave
-            rings = extract_filtered_rings(by_num["643"], lambda cx, cy, _: not (18.0 < cx < 24.0 and 53.0 < cy < 56.5))
-        elif eid == "Kosovo" and "kosovo" in by_name:
-            rings = dissolve_rings(w_arcs, [by_name["kosovo"]])
-        elif eid == "Sahrawi Arab DR" and "732" in by_num:
-            rings = dissolve_rings(w_arcs, [by_num["732"]])
-        elif eid == "Northern Cyprus" and "northern cyprus" in by_name:
-            rings = dissolve_rings(w_arcs, [by_name["northern cyprus"]])
-        elif num.isdigit() and str(int(num)) in by_num:
-            rings = dissolve_rings(w_arcs, [by_num[str(int(num))]])
-        elif en.lower() in by_name:
-            rings = dissolve_rings(w_arcs, [by_name[en.lower()]])
-
-        # Split antimeridian-crossing rings cleanly along +/-180 deg so no horizontal wrap strokes occur
-        clean_rings = []
-        for ring in rings:
-            n = len(ring)
-            jump_indices = [i for i in range(n) if abs(ring[i][0] - ring[(i + 1) % n][0]) > 180.0]
-            if not jump_indices:
-                clean_rings.append(ring)
-            elif len(jump_indices) == 2:
-                i0, i1 = jump_indices
-                seg_a = [ring[(i0 + 1 + k) % n] for k in range((i1 - i0) % n)]
-                seg_b = [ring[(i1 + 1 + k) % n] for k in range((i0 - i1) % n)]
-                def interp_lat(p1: tuple[float, float], p2: tuple[float, float]) -> float:
-                    x1, y1 = p1
-                    x2, y2 = p2
-                    if x1 > 0 and x2 < 0:
-                        t = (180.0 - x1) / max(1e-9, (x2 + 360.0) - x1)
-                    else:
-                        t = ((x1 + 360.0) - 180.0) / max(1e-9, (x1 + 360.0) - x2)
-                    return y1 + max(0.0, min(1.0, t)) * (y2 - y1)
-                lat_a = interp_lat(ring[i0], ring[(i0 + 1) % n])
-                lat_b = interp_lat(ring[i1], ring[(i1 + 1) % n])
-                for seg, s_lat, e_lat in ((seg_a, lat_a, lat_b), (seg_b, lat_b, lat_a)):
-                    if not seg:
-                        continue
-                    edge_lon = 180.0 if (sum(p[0] for p in seg) / len(seg)) >= 0 else -180.0
-                    clean_rings.append([(edge_lon, s_lat)] + seg + [(edge_lon, e_lat)])
-            else:
-                left = [((lon + 360.0 if lon < 0 else lon), lat) for lon, lat in ring]
-                clean_rings.append([(min(179.95, p[0]), p[1]) for p in left])
-        rings = clean_rings
-
-        if not rings or (eid in MICRO_COORDS and eid not in ("Alaska", "French Guiana", "Kaliningradskaya")):
-            if eid in MICRO_COORDS and not rings:
-                lon, lat = MICRO_COORDS[eid]
-                rings = make_marker_ring(lon, lat, 1.55)
-                is_marker = True
-        if not rings:
-            raise RuntimeError(f"Missing world geometry for {eid} ({name})")
-
-        d_str, bbox, center, area_px = rings_to_svg_path_and_stats(rings, project_world, min_step_px=0.35)
-        world_paths[eid] = d_str
-        world_out.append({
-            "id": eid,
-            "name": name,
-            "ruby": ruby,
-            "en": en,
-            "population": pop,
-            "areaKm2": area,
-            "unMember": un,
-            "jpRecognized": jp_rec,
-            "alpha3": a3,
-            "alpha2": a2,
-            "place": place,
-            "placeEn": place_en,
-            "wiki": wiki,
-            "modes": mode_by_id.get(eid, []),
-            "isMarker": is_marker,
-            "bbox": bbox,
-            "center": center,
-            "areaPx": area_px,
-        })
-
-    return world_out, world_paths
-
-
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     (OUT_DIR / "muni").mkdir(parents=True, exist_ok=True)
 
     pref_out, pref_paths, muni_out, muni_paths = build_japan_prefs_and_munis()
     geo_100 = build_geography_100(pref_out)
-    world_out, world_paths = build_world_map()
 
     json.dump({"prefs": pref_out, "paths": pref_paths}, open(OUT_DIR / "japan_prefs.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     json.dump(muni_out, open(OUT_DIR / "muni" / "index.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     json.dump(muni_paths, open(OUT_DIR / "muni" / "all_paths.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     json.dump(geo_100, open(OUT_DIR / "geography_100.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
-    json.dump({"regions": world_out, "paths": world_paths}, open(OUT_DIR / "world_map.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 
-    for p in [OUT_DIR / "japan_prefs.json", OUT_DIR / "muni" / "index.json", OUT_DIR / "muni" / "all_paths.json", OUT_DIR / "geography_100.json", OUT_DIR / "world_map.json"]:
+    for p in [OUT_DIR / "japan_prefs.json", OUT_DIR / "muni" / "index.json", OUT_DIR / "muni" / "all_paths.json", OUT_DIR / "geography_100.json"]:
         print(f"Wrote {p.relative_to(OUT_DIR.parent.parent)}: {p.stat().st_size / 1024:.1f} KB")
-    print(f"Summary: prefs={len(pref_out)}, munis={len(muni_out)}, geo100={len(geo_100)}, world={len(world_out)}")
+    print(f"Summary: prefs={len(pref_out)}, munis={len(muni_out)}, geo100={len(geo_100)}")
 
 
 if __name__ == "__main__":

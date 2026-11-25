@@ -1,5 +1,5 @@
 import React from 'react';
-import { JAPAN_REGION_JUMPS, WORLD_REGION_JUMPS } from '../data/gameCatalog';
+import { JAPAN_REGION_JUMPS } from '../data/gameCatalog';
 import { getJapanRegionBBox } from '../services/regionJumpUtils';
 import { formatTimeMs } from '../utils/formatters';
 import type { BBox, ConfigState, MapPieceItem, MapTag } from '../types/game';
@@ -9,11 +9,12 @@ interface HudOverlayProps {
   modeLabel: string;
   elapsedMs: number;
   misses: number;
+  hintsUsed: number;
   completedCount: number;
   totalCount: number;
   config: ConfigState;
   zoomRatio: number;
-  showJumpButtons: 'japan' | 'world' | 'none';
+  showJumpButtons: 'japan' | 'none';
   isCustomOrRandom: boolean;
   inspectedPiece: MapPieceItem | null;
   tags: MapTag[];
@@ -21,6 +22,7 @@ interface HudOverlayProps {
   onZoomChange: (nextZoom: number) => void;
   onJumpToBBox: (bbox: BBox) => void;
   onResetZoom: () => void;
+  onToggleNameOnFix: () => void;
   onOpenConfig: () => void;
   onOpenSave?: () => void;
   onBack: () => void;
@@ -34,6 +36,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   modeLabel,
   elapsedMs,
   misses,
+  hintsUsed,
   completedCount,
   totalCount,
   config,
@@ -46,6 +49,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   onZoomChange,
   onJumpToBBox,
   onResetZoom,
+  onToggleNameOnFix,
   onOpenConfig,
   onOpenSave,
   onBack,
@@ -56,9 +60,6 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   const japanJumps = config.reverseJumpButtons
     ? [...JAPAN_REGION_JUMPS].reverse()
     : JAPAN_REGION_JUMPS;
-  const worldJumps = config.reverseJumpButtons
-    ? [...WORLD_REGION_JUMPS].reverse()
-    : WORLD_REGION_JUMPS;
 
   const sliderVal = Math.max(0, Math.min(100, Math.round((Math.log(Math.max(0.65, zoomRatio) / 0.65) / Math.log(48 / 0.65)) * 100)));
 
@@ -92,6 +93,10 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             <span className="hud-stat-label">Miss</span>
             <strong className="hud-stat-val hud-miss-val">{misses}</strong>
           </div>
+          <div className="hud-stat">
+            <span className="hud-stat-label">ヒント</span>
+            <strong className="hud-stat-val hud-hint-val">{hintsUsed}</strong>
+          </div>
           {config.showTime && (
             <div className="hud-stat">
               <span className="hud-stat-label">Time</span>
@@ -101,6 +106,14 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
         </div>
 
         <div className="hud-actions-group">
+          <button
+            type="button"
+            className={`hud-btn hud-toggle-btn ${config.nameOnFix ? '' : 'is-off'}`}
+            title="はめた後・回答後に白地図上へ名前を表示／非表示"
+            onClick={onToggleNameOnFix}
+          >
+            🏷 回答後の名前: {config.nameOnFix ? 'ON' : 'OFF'}
+          </button>
           {!isCustomOrRandom && onOpenSave && (
             <button type="button" className="hud-btn" onClick={onOpenSave}>
               セーブ
@@ -149,30 +162,19 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
         </button>
       </div>
 
-      {/* Region Jump Bar (Japan / World) */}
-      {showJumpButtons !== 'none' && (
+      {/* Region Jump Bar (Japan) */}
+      {showJumpButtons === 'japan' && (
         <div className="hud-jump-bar">
-          {showJumpButtons === 'japan'
-            ? japanJumps.map((j) => (
-                <button
-                  key={j.id}
-                  type="button"
-                  className="jump-chip-btn"
-                  onClick={() => onJumpToBBox(getJapanRegionBBox(j.id))}
-                >
-                  {j.short}
-                </button>
-              ))
-            : worldJumps.map((j) => (
-                <button
-                  key={j.id}
-                  type="button"
-                  className="jump-chip-btn"
-                  onClick={() => onJumpToBBox(j.bbox)}
-                >
-                  {j.label}
-                </button>
-              ))}
+          {japanJumps.map((j) => (
+            <button
+              key={j.id}
+              type="button"
+              className="jump-chip-btn"
+              onClick={() => onJumpToBBox(getJapanRegionBBox(j.id))}
+            >
+              {j.short}
+            </button>
+          ))}
         </div>
       )}
 

@@ -13,6 +13,7 @@ import type {
   BBox,
   ConfigState,
   GameSessionSpec,
+  HintAreaOverlay,
   MapPieceItem,
   MapTag,
   MistakeEntry,
@@ -61,6 +62,45 @@ interface GameSessionShellProps {
   onExitToTitle: () => void;
 }
 
+function computeHint1Area(
+  piece: MapPieceItem,
+  loadedMap: LoadedSessionMap,
+  spec: GameSessionSpec,
+): HintAreaOverlay {
+  const vb = loadedMap.viewBBox;
+  const mapSpan = Math.max(vb[2] - vb[0], vb[3] - vb[1], 16);
+  const pieceSpan = Math.max(
+    piece.bbox[2] - piece.bbox[0],
+    piece.bbox[3] - piece.bbox[1],
+    2,
+  );
+
+  let r: number;
+  if (spec.mapScope === 'japan_prefs') {
+    r = Math.min(130, Math.max(pieceSpan * 1.45, 88));
+  } else if (mapSpan > 400) {
+    r = Math.min(95, Math.max(pieceSpan * 2.6, 58));
+  } else {
+    r = Math.min(mapSpan * 0.28, Math.max(pieceSpan * 2.6, mapSpan * 0.16, 18));
+  }
+
+  let hash = 2166136261;
+  for (let i = 0; i < piece.id.length; i += 1) {
+    hash ^= piece.id.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const angle = (((hash >>> 0) % 360) * Math.PI) / 180;
+  const cx = piece.center[0] + Math.cos(angle) * r * 0.36;
+  const cy = piece.center[1] + Math.sin(angle) * r * 0.36;
+
+  return {
+    pieceId: piece.id,
+    cx,
+    cy,
+    r,
+  };
+}
+
 export const GameSessionShell: React.FC<GameSessionShellProps> = ({
   spec,
   restoredProgress,
@@ -101,11 +141,48 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
   const [selectedPiece, setSelectedPiece] = useState<MapPieceItem | null>(null);
   const [inspectedPiece, setInspectedPiece] = useState<MapPieceItem | null>(null);
   const [hoverTargetId, setHoverTargetId] = useState<string | null>(null);
-  const [hintPieceId, setHintPieceId] = useState<string | null>(null);
+  const [hintState, setHintState] = useState<{
+    pieceId: string;
+    stage: 0 | 1 | 2;
+    area: HintAreaOverlay | null;
+  } | null>(null);
+  const [hintFittedPieceId, setHintFittedPieceId] = useState<string | null>(null);
+
+  const hint2TimerRef = useRef<number | null>(null);
+  const hintFittedTimerRef = useRef<number | null>(null);
+  const hint2AdvancingPieceIdRef = useRef<string | null>(null);
 
   const [showConfig, setShowConfig] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showTagModal, setShowTagModal] = useState(false);
+
+  const svgElRef = useRef<SVGSVGElement | null>(null);
+  const liveViewBoxListenersRef = useRef<Set<() => void>>(new Set());
+
+  const handleLiveViewBoxChange = useCallback(() => {
+    for (const listener of liveViewBoxListenersRef.current) {
+      listener();
+    }
+  }, []);
+
+  const subscribeLiveViewBox = useCallback((listener: () => void) => {
+    liveViewBoxListenersRef.current.add(listener);
+    return () => {
+      liveViewBoxListenersRef.current.delete(listener);
+    };
+  }, []);
+
+  const getSvgRect = useCallback(
+    () => svgElRef.current?.getBoundingClientRect() ?? null,
+    [],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (hint2TimerRef.current != null) window.clearTimeout(hint2TimerRef.current);
+      if (hintFittedTimerRef.current != null) window.clearTimeout(hintFittedTimerRef.current);
+    };
+  }, []);
 
   // Load session map geometry once per mounted session (App keys this component by spec.sessionId)
   useEffect(() => {
@@ -192,12 +269,22 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     panByScreenDelta,
     finishPan,
     clientToSvg,
+    svgToContainerPoint,
     svgScalePxPerUnit,
   } = useMapViewport({
     initialBBox,
     dragInertia: config.dragInertia,
     fpsMode: config.fpsMode,
+    onLiveViewBoxChange: handleLiveViewBoxChange,
   });
+
+  const handleSvgRef = useCallback(
+    (node: SVGSVGElement | null) => {
+      svgElRef.current = node;
+      svgRef(node);
+    },
+    [svgRef],
+  );
 
   const elapsedMsRef = useRef(elapsedMs);
   useEffect(() => {
@@ -335,13 +422,23 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
   );
 
   const handlePieceSuccess = useCallback(
-    (pieceId: string) => {
+    (pieceId: string, options?: { keepHintFitted?: boolean }) => {
       if (completedIds.has(pieceId)) return;
+      if (hint2TimerRef.current != null) {
+        window.clearTimeout(hint2TimerRef.current);
+        hint2TimerRef.current = null;
+      }
+      if (hint2AdvancingPieceIdRef.current === pieceId) {
+        hint2AdvancingPieceIdRef.current = null;
+      }
       const nextCompleted = new Set(completedIds);
       nextCompleted.add(pieceId);
       setCompletedIds(nextCompleted);
       setSelectedPiece(null);
-      setHintPieceId(null);
+      setHintState(null);
+      if (!options?.keepHintFitted) {
+        setHintFittedPieceId((cur) => (cur === pieceId ? null : cur));
+      }
 
       // If answered cleanly (no mistake on this piece during this session), remove from saved mistake bank!
       if (!sessionWrongIds.has(pieceId)) {
@@ -423,6 +520,11 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     ],
   );
 
+  const handlePieceSuccessRef = useRef(handlePieceSuccess);
+  useEffect(() => {
+    handlePieceSuccessRef.current = handlePieceSuccess;
+  }, [handlePieceSuccess]);
+
   const handleMiss = useCallback(
     (piece: MapPieceItem | null) => {
       playWrongBuzz(config.seVolume);
@@ -442,19 +544,79 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     [orderedTargets, sessionWrongIds],
   );
 
-  const handleHelp = () => {
-    if (config.disableHelpButton || isCompleted) return;
+  const currentHintTargetId =
+    spec.playKind === 'puzzle'
+      ? (selectedPiece?.id ?? remainingPieces[0]?.id ?? null)
+      : (activePiece?.id ?? null);
+
+  const activeHintMatch =
+    hintState && currentHintTargetId && hintState.pieceId === currentHintTargetId
+      ? hintState
+      : null;
+  const hintStage: 0 | 1 | 2 = activeHintMatch?.stage ?? 0;
+  const hintArea: HintAreaOverlay | null = activeHintMatch?.area ?? null;
+
+  const handleHint1 = () => {
+    if (config.disableHelpButton || isCompleted || !loadedMap) return;
     const hintTarget =
       spec.playKind === 'puzzle'
         ? selectedPiece ?? remainingPieces[0]
         : activePiece;
     if (!hintTarget) return;
+    if (hintStage >= 1 && hintState?.pieceId === hintTarget.id) return;
+
     setHintsUsed((h) => h + 1);
-    setHintPieceId(hintTarget.id);
-    focusPieceSmooth(hintTarget);
-    window.setTimeout(() => {
-      setHintPieceId((cur) => (cur === hintTarget.id ? null : cur));
-    }, 2400);
+    if (spec.playKind === 'puzzle' && !selectedPiece) {
+      setSelectedPiece(hintTarget);
+      setInspectedPiece(hintTarget);
+    }
+    setHintState({
+      pieceId: hintTarget.id,
+      stage: 1,
+      area: computeHint1Area(hintTarget, loadedMap, spec),
+    });
+  };
+
+  const handleHint2 = () => {
+    if (config.disableHelpButton || isCompleted || !loadedMap) return;
+    const hintTarget =
+      spec.playKind === 'puzzle'
+        ? selectedPiece ?? remainingPieces[0]
+        : activePiece;
+    if (!hintTarget || completedIds.has(hintTarget.id)) return;
+    if (hintStage >= 2 && hintState?.pieceId === hintTarget.id) return;
+    if (hint2AdvancingPieceIdRef.current === hintTarget.id) return;
+
+    setHintsUsed((h) => h + 1);
+    setHintState({
+      pieceId: hintTarget.id,
+      stage: 2,
+      area: null,
+    });
+    setHintFittedPieceId(hintTarget.id);
+
+    if (spec.playKind === 'puzzle') {
+      if (hintFittedTimerRef.current != null) {
+        window.clearTimeout(hintFittedTimerRef.current);
+      }
+      handlePieceSuccess(hintTarget.id, { keepHintFitted: true });
+      hintFittedTimerRef.current = window.setTimeout(() => {
+        setHintFittedPieceId((cur) => (cur === hintTarget.id ? null : cur));
+        hintFittedTimerRef.current = null;
+      }, 1500);
+      return;
+    }
+
+    if (spec.playKind === 'quiz' || spec.playKind === 'geography_quiz') {
+      hint2AdvancingPieceIdRef.current = hintTarget.id;
+      if (hint2TimerRef.current != null) {
+        window.clearTimeout(hint2TimerRef.current);
+      }
+      hint2TimerRef.current = window.setTimeout(() => {
+        hint2TimerRef.current = null;
+        handlePieceSuccessRef.current(hintTarget.id);
+      }, 850);
+    }
   };
 
   const handleBackConfirmExit = () => {
@@ -515,16 +677,16 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     });
   };
 
-  const showJumpButtons: 'japan' | 'world' | 'none' =
-    spec.mapScope === 'world'
-      ? 'world'
-      : spec.areaId === '00_japan' ||
-          spec.areaId === '00_japan_all' ||
-          spec.mapScope === 'geography_100'
-        ? 'japan'
-        : 'none';
+  const showJumpButtons: 'japan' | 'none' =
+    spec.areaId === '00_japan' ||
+    spec.areaId === '00_japan_all' ||
+    spec.areaId === '00_japan_cities' ||
+    spec.mapScope === 'geography_100'
+      ? 'japan'
+      : 'none';
 
   const isTerrainMode = spec.mapScope === 'geography_100';
+  const isPrefGuessMode = spec.mapScope === 'japan_prefs' && !spec.geoCategory;
 
   return (
     <div className={`map-screen-root ${spec.playKind === 'puzzle' ? 'has-tray' : 'has-bottom-panel'}`}>
@@ -533,6 +695,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         modeLabel={spec.modeLabel}
         elapsedMs={elapsedMs}
         misses={misses}
+        hintsUsed={hintsUsed}
         completedCount={completedIds.size}
         totalCount={orderedTargets.length}
         config={config}
@@ -545,6 +708,9 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         onZoomChange={(z) => setZoomAtPoint(z)}
         onJumpToBBox={(bbox) => animateToBBox(bbox)}
         onResetZoom={() => loadedMap && fitBBox(loadedMap.viewBBox)}
+        onToggleNameOnFix={() =>
+          onConfigChange({ ...config, nameOnFix: !config.nameOnFix })
+        }
         onOpenConfig={() => setShowConfig(true)}
         onOpenSave={() => setShowSaveModal(true)}
         onBack={handleBackConfirmExit}
@@ -557,7 +723,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         <div className="map-loading-state">精巧な白地図を生成中...</div>
       ) : (
         <MapCanvas
-          svgRef={svgRef}
+          svgRef={handleSvgRef}
           viewBox={viewBox}
           viewBoxString={viewBoxString}
           targetPieces={loadedMap.targetPieces}
@@ -569,13 +735,17 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
           activePieceId={
             !isCompleted && spec.playKind !== 'puzzle' && activePiece ? activePiece.id : null
           }
-          hintPieceId={hintPieceId}
+          hintPieceId={null}
+          hintArea={hintArea}
+          hintFittedPieceId={hintFittedPieceId}
           selectedPieceId={isCompleted ? inspectedPiece?.id ?? null : null}
           config={config}
           tags={tags}
           showCapitalMarks={
             spec.geoCategory === 'capital_q' || spec.geoCategory === 'capital_y'
           }
+          enablePrefHoverTooltip={!isPrefGuessMode}
+          enablePrefTint={!isPrefGuessMode}
           hoverTargetId={hoverTargetId}
           isTerrainMode={isTerrainMode}
           onPieceClick={handleMapPieceClick}
@@ -595,6 +765,9 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
               config={config}
               selectedPieceId={selectedPiece?.id ?? null}
               onSelectPiece={(p) => {
+                if (p?.id !== selectedPiece?.id) {
+                  setHintState(null);
+                }
                 setSelectedPiece(p);
                 if (p) setInspectedPiece(p);
               }}
@@ -607,7 +780,8 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
                 }
               }}
               onHoverTargetChange={setHoverTargetId}
-              onHelp={handleHelp}
+              onHint1={handleHint1}
+              onHint2={handleHint2}
               clientToSvg={clientToSvg}
               svgScalePxPerUnit={svgScalePxPerUnit}
             />
@@ -620,11 +794,25 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
               allPoolPieces={loadedMap.allPoolPieces}
               isGeographyQuiz={spec.playKind === 'geography_quiz'}
               disableHelpButton={config.disableHelpButton}
+              hintStage={hintStage}
+              quizChoiceLayout={config.quizChoiceLayout}
+              hasJumpBar={showJumpButtons !== 'none'}
+              svgToContainerPoint={svgToContainerPoint}
+              getSvgRect={getSvgRect}
+              subscribeLiveViewBox={subscribeLiveViewBox}
               onFocusPiece={focusPieceSmooth}
-              onHelp={handleHelp}
+              onHint1={handleHint1}
+              onHint2={handleHint2}
+              onToggleQuizChoiceLayout={() =>
+                onConfigChange({
+                  ...config,
+                  quizChoiceLayout:
+                    config.quizChoiceLayout === 'pointing' ? 'bottom' : 'pointing',
+                })
+              }
               onAnswerResult={(correct) => {
                 if (correct) {
-                  window.setTimeout(() => handlePieceSuccess(activePiece.id), 180);
+                  window.setTimeout(() => handlePieceSuccessRef.current(activePiece.id), 180);
                 } else {
                   handleMiss(activePiece);
                 }
@@ -638,11 +826,13 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
               activePiece={activePiece}
               isCapitalYomikata={spec.geoCategory === 'capital_y'}
               config={config}
+              hintStage={hintStage}
               onFocusPiece={focusPieceSmooth}
-              onHelp={handleHelp}
+              onHint1={handleHint1}
+              onHint2={handleHint2}
               onAnswerResult={(correct) => {
                 if (correct) {
-                  window.setTimeout(() => handlePieceSuccess(activePiece.id), 120);
+                  window.setTimeout(() => handlePieceSuccessRef.current(activePiece.id), 120);
                 } else {
                   handleMiss(activePiece);
                 }

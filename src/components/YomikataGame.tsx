@@ -6,8 +6,10 @@ interface YomikataGameProps {
   activePiece: MapPieceItem;
   isCapitalYomikata: boolean;
   config: ConfigState;
+  hintStage: 0 | 1 | 2;
   onFocusPiece: (piece: MapPieceItem) => void;
-  onHelp: () => void;
+  onHint1: () => void;
+  onHint2: () => void;
   onAnswerResult: (correct: boolean) => void;
   onMarkMistake: () => void;
 }
@@ -16,8 +18,10 @@ export const YomikataGame: React.FC<YomikataGameProps> = ({
   activePiece,
   isCapitalYomikata,
   config,
+  hintStage,
   onFocusPiece,
-  onHelp,
+  onHint1,
+  onHint2,
   onAnswerResult,
   onMarkMistake,
 }) => {
@@ -29,6 +33,7 @@ export const YomikataGame: React.FC<YomikataGameProps> = ({
   const isComposingRef = useRef(false);
 
   const expected = normalizeKana(activePiece.answerRuby ?? activePiece.ruby);
+  const canAdvanceOnEnter = revealed || hintStage >= 2;
 
   // Auto-focus input immediately on every question so user can type + Enter continuously
   useEffect(() => {
@@ -43,7 +48,7 @@ export const YomikataGame: React.FC<YomikataGameProps> = ({
 
   const judgeValue = (rawVal: string) => {
     if (feedback === 'ok') return;
-    if (revealed) {
+    if (canAdvanceOnEnter) {
       triggerCorrect();
       return;
     }
@@ -127,16 +132,32 @@ export const YomikataGame: React.FC<YomikataGameProps> = ({
           </button>
           {!config.disableHelpButton && (
             <>
-              <button
-                type="button"
-                className="btn-warning btn-xs"
-                onClick={() => {
-                  onHelp();
-                  inputRef.current?.focus();
-                }}
-              >
-                ？ヒント
-              </button>
+              <div className="hint-btn-group">
+                <button
+                  type="button"
+                  className="btn-hint1 btn-xs"
+                  title="この辺の大きな範囲を表示"
+                  onClick={() => {
+                    onHint1();
+                    inputRef.current?.focus();
+                  }}
+                >
+                  💡 ヒント1
+                </button>
+                <button
+                  type="button"
+                  className="btn-hint2 btn-xs"
+                  title="その場所へ直接当てはめる"
+                  onClick={() => {
+                    onHint2();
+                    setTyped(expected);
+                    setFeedback(null);
+                    inputRef.current?.focus();
+                  }}
+                >
+                  💡 ヒント2
+                </button>
+              </div>
               <button
                 type="button"
                 className="btn-ghost btn-xs"
@@ -149,11 +170,19 @@ export const YomikataGame: React.FC<YomikataGameProps> = ({
         </div>
       </div>
 
-      {revealed && (
+      {hintStage >= 2 ? (
+        <div className="yomi-reveal-banner">
+          ヒント2：地図上に当てはめました ・ 読み「<strong>{expected}</strong>」（Enter キーで次の問題へ進めます）
+        </div>
+      ) : revealed ? (
         <div className="yomi-reveal-banner">
           答え：<strong>{expected}</strong>（Enter キーで次の問題へ進めます）
         </div>
-      )}
+      ) : hintStage === 1 ? (
+        <div className="yomi-reveal-banner">
+          ヒント1：最初の文字「<strong>{expected.slice(0, 1)}</strong>」
+        </div>
+      ) : null}
 
       <div className="yomi-input-row">
         <input
@@ -183,7 +212,7 @@ export const YomikataGame: React.FC<YomikataGameProps> = ({
           className="btn-primary yomi-submit-btn"
           onClick={() => judgeValue(typed)}
         >
-          {revealed ? '次へ (Enter)' : '回答 (Enter)'}
+          {canAdvanceOnEnter ? '次へ (Enter)' : '回答 (Enter)'}
         </button>
       </div>
 

@@ -68,13 +68,8 @@ GEO100_JSON = REPO_ROOT / "public" / "data" / "geography_100.json"
 OUT_JSON = REPO_ROOT / "scripts" / "geo_sources" / "mountains.json"
 
 DEFAULT_DEM_CACHE = Path(
-    os.environ.get(
-        "TERRARIUM_CACHE_DIR",
-        "/Users/tomoyamiyake/.gemini/antigravity/brain/64bb9ca5-e47c-4bcb-a7c6-12a73c8780fb/scratch/terrarium_z7",
-    )
+    os.environ.get("TERRARIUM_CACHE_DIR", "/tmp/terrarium_z7_cache")
 )
-if not DEFAULT_DEM_CACHE.exists():
-    DEFAULT_DEM_CACHE = Path("/tmp/terrarium_z7_cache")
 
 
 # ---------------------------------------------------------------------------

@@ -9,7 +9,16 @@ export type GeographySubCategory =
   | 'plain'
   | 'lake';
 
-export type AreaCategory = 'japan' | 'prefecture' | 'municipalities' | 'world';
+export type AreaCategory = 'japan' | 'prefecture' | 'municipalities' | 'cities';
+
+export type QuizChoiceLayout = 'bottom' | 'pointing';
+
+export interface HintAreaOverlay {
+  pieceId: string;
+  cx: number;
+  cy: number;
+  r: number;
+}
 
 export type BBox = [number, number, number, number]; // [minX, minY, maxX, maxY]
 
@@ -66,32 +75,6 @@ export interface GeographyFeature {
   desc: string;
 }
 
-export interface WorldRegionMeta {
-  id: string;
-  name: string;
-  ruby: string;
-  en: string;
-  population: number;
-  areaKm2: number;
-  unMember: boolean;
-  jpRecognized: boolean;
-  alpha3: string;
-  alpha2: string;
-  place: string;
-  placeEn: string;
-  wiki: string;
-  modes: string[];
-  isMarker: boolean;
-  bbox: BBox;
-  center: [number, number];
-  areaPx: number;
-}
-
-export interface WorldMapData {
-  regions: WorldRegionMeta[];
-  paths: Record<string, string>;
-}
-
 /** Normalized map item rendered in Play/View/DataTable */
 export interface MapPieceItem {
   id: string;
@@ -127,7 +110,7 @@ export interface AreaSubMode {
   shortLabel: string;
   playKind: GamePlayKind;
   geoCategory?: GeographySubCategory;
-  regionFilter?: string; // e.g. 'Kantou', 'douou', 'tokyo23', 'world_europe'
+  regionFilter?: string; // e.g. 'Kantou', 'douou', 'tokyo23', 'cities_all'
 }
 
 export interface AreaDefinition {
@@ -150,7 +133,7 @@ export interface GameSessionSpec {
   modeId: string;
   modeLabel: string;
   playKind: GamePlayKind;
-  mapScope: 'japan_prefs' | 'japan_munis' | 'world' | 'geography_100';
+  mapScope: 'japan_prefs' | 'japan_munis' | 'geography_100';
   geoCategory?: GeographySubCategory;
   prefFilterCodes?: string[];
   regionFilter?: string;
@@ -203,6 +186,7 @@ export interface ConfigState {
   nameOnDrag: boolean;
   nameOnFix: boolean;
   dragInertia: number;           // 0..1.0
+  quizChoiceLayout: QuizChoiceLayout;
 }
 
 export interface ModeBestRecord {

@@ -20,19 +20,6 @@ export const JAPAN_REGION_JUMPS: {
   { id: 'okinawa', label: '沖縄', short: '沖縄', prefCodes: ['47'], center: [160, 125], zoom: 3.6 },
 ];
 
-export const WORLD_REGION_JUMPS: {
-  id: string;
-  label: string;
-  bbox: [number, number, number, number];
-}[] = [
-  { id: 'europe', label: 'ヨーロッパ', bbox: [435, 35, 640, 175] },
-  { id: 'africa', label: 'アフリカ', bbox: [440, 160, 645, 415] },
-  { id: 'middle_east', label: '中東', bbox: [575, 130, 695, 250] },
-  { id: 'asia', label: 'アジア', bbox: [600, 35, 960, 290] },
-  { id: 'oceania', label: 'オセアニア', bbox: [790, 240, 995, 465] },
-  { id: 'america', label: 'アメリカ', bbox: [30, 35, 415, 465] },
-];
-
 const TIHOU_MUNI_GROUPS: { key: string; label: string; prefCodes: string[] }[] = [
   { key: 'Touhoku', label: '東北地方', prefCodes: ['02', '03', '04', '05', '06', '07'] },
   { key: 'Kantou', label: '関東地方', prefCodes: ['08', '09', '10', '11', '12', '13', '14'] },
@@ -58,17 +45,6 @@ export const TOKYO_SUB_REGIONS = [
   { key: 'tokyo_island', label: '東京都島しょ部' },
 ] as const;
 
-export const WORLD_SUB_MODES: { id: string; label: string; listKey?: string }[] = [
-  { id: 'world_P', label: '世界全体（パズル）' },
-  { id: 'world_europe_P', label: 'ヨーロッパ（パズル）', listKey: 'world_europe' },
-  { id: 'world_africa_P', label: 'アフリカ（パズル）', listKey: 'world_africa' },
-  { id: 'world_middle_east_P', label: '中東（パズル）', listKey: 'world_middle_east' },
-  { id: 'world_asia_P', label: 'アジア（パズル）', listKey: 'world_asia' },
-  { id: 'world_asia_south_east_P', label: '東南アジア（パズル）', listKey: 'world_asia_south_east' },
-  { id: 'world_oceania_P', label: 'オセアニア（パズル）', listKey: 'world_oceania' },
-  { id: 'world_america_P', label: 'アメリカ（パズル）', listKey: 'world_america' },
-];
-
 export const JAPAN_MAIN_MODES: AreaSubMode[] = [
   { id: '00_japan_P', label: '都道府県 パズル', shortLabel: 'パズル', playKind: 'puzzle' },
   { id: '00_japan_Q', label: '都道府県 クイズ', shortLabel: 'クイズ', playKind: 'quiz' },
@@ -93,6 +69,26 @@ export function buildAllMunicipalitiesModes(): AreaSubMode[] {
       { id: `00_japan_Tihou_${t.key}_P`, label: `${t.label} パズル`, shortLabel: `${t.label.replace('地方', '')} P`, playKind: 'puzzle', regionFilter: t.key },
       { id: `00_japan_Tihou_${t.key}_Q`, label: `${t.label} クイズ`, shortLabel: `${t.label.replace('地方', '')} Q`, playKind: 'quiz', regionFilter: t.key },
       { id: `00_japan_Tihou_${t.key}_Y`, label: `${t.label} 読み方`, shortLabel: `${t.label.replace('地方', '')} 読`, playKind: 'yomikata', regionFilter: t.key },
+    );
+  }
+  return list;
+}
+
+export function buildAllCitiesModes(): AreaSubMode[] {
+  const list: AreaSubMode[] = [
+    { id: '00_japan_Cities_P', label: '全国（全市）パズル', shortLabel: '全国市 P', playKind: 'puzzle', regionFilter: 'cities_all' },
+    { id: '00_japan_Cities_Q', label: '全国（全市）クイズ', shortLabel: '全国市 Q', playKind: 'quiz', regionFilter: 'cities_all' },
+    { id: '00_japan_Cities_Y', label: '全国（全市）読み方', shortLabel: '全国市 読', playKind: 'yomikata', regionFilter: 'cities_all' },
+    { id: '00_japan_Cities_Hokkaido_P', label: '北海道の市 パズル', shortLabel: '北海道市 P', playKind: 'puzzle', regionFilter: 'cities_Hokkaido' },
+    { id: '00_japan_Cities_Hokkaido_Q', label: '北海道の市 クイズ', shortLabel: '北海道市 Q', playKind: 'quiz', regionFilter: 'cities_Hokkaido' },
+    { id: '00_japan_Cities_Hokkaido_Y', label: '北海道の市 読み方', shortLabel: '北海道市 読', playKind: 'yomikata', regionFilter: 'cities_Hokkaido' },
+  ];
+  for (const t of TIHOU_MUNI_GROUPS) {
+    const shortRegion = t.label.replace('地方', '');
+    list.push(
+      { id: `00_japan_Cities_${t.key}_P`, label: `${t.label}の市 パズル`, shortLabel: `${shortRegion}市 P`, playKind: 'puzzle', regionFilter: `cities_${t.key}` },
+      { id: `00_japan_Cities_${t.key}_Q`, label: `${t.label}の市 クイズ`, shortLabel: `${shortRegion}市 Q`, playKind: 'quiz', regionFilter: `cities_${t.key}` },
+      { id: `00_japan_Cities_${t.key}_Y`, label: `${t.label}の市 読み方`, shortLabel: `${shortRegion}市 読`, playKind: 'yomikata', regionFilter: `cities_${t.key}` },
     );
   }
   return list;
@@ -125,7 +121,11 @@ export function buildPrefectureModes(prefCode: string, prefName: string): AreaSu
   return base;
 }
 
-export function buildAreaCatalog(prefs: PrefectureMeta[], totalMunis: number, totalWorld: number): AreaDefinition[] {
+export function buildAreaCatalog(
+  prefs: PrefectureMeta[],
+  totalMunis: number,
+  totalCities: number,
+): AreaDefinition[] {
   const japanArea: AreaDefinition = {
     id: '00_japan',
     category: 'japan',
@@ -150,22 +150,16 @@ export function buildAreaCatalog(prefs: PrefectureMeta[], totalMunis: number, to
     modes: buildAllMunicipalitiesModes(),
   };
 
-  const worldArea: AreaDefinition = {
-    id: 'world',
-    category: 'world',
-    name: '世界の国と地名',
-    ruby: 'せかいのくにとちめい',
-    subTitle: `全世界${totalWorld}地域・州別パズル`,
-    population: 7631091000,
-    wiki: 'https://ja.wikipedia.org/wiki/%E4%B8%96%E7%95%8C',
-    totalCount: totalWorld,
-    modes: WORLD_SUB_MODES.map((m) => ({
-      id: m.id,
-      label: m.label,
-      shortLabel: m.label.replace('（パズル）', ''),
-      playKind: 'puzzle',
-      regionFilter: m.listKey,
-    })),
+  const allCitiesArea: AreaDefinition = {
+    id: '00_japan_cities',
+    category: 'cities',
+    name: '市（全国・地方別）',
+    ruby: 'し',
+    subTitle: `全国${totalCities.toLocaleString()}市・北海道＆7地方別`,
+    population: 127443563,
+    wiki: 'https://ja.wikipedia.org/wiki/%E6%97%A5%E6%9C%AC%E3%81%AE%E5%B8%82',
+    totalCount: totalCities,
+    modes: buildAllCitiesModes(),
   };
 
   const prefAreas: AreaDefinition[] = prefs.map((p) => ({
@@ -181,5 +175,5 @@ export function buildAreaCatalog(prefs: PrefectureMeta[], totalMunis: number, to
     modes: buildPrefectureModes(p.code, p.name),
   }));
 
-  return [japanArea, allMuniArea, worldArea, ...prefAreas];
+  return [japanArea, allMuniArea, allCitiesArea, ...prefAreas];
 }

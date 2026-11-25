@@ -1,8 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import {
-  JAPAN_REGION_JUMPS,
-  WORLD_REGION_JUMPS,
-} from '../data/gameCatalog';
+import { JAPAN_REGION_JUMPS } from '../data/gameCatalog';
 import { useMapViewport } from '../hooks/useMapViewport';
 import { loadSessionMap } from '../services/mapDataLoader';
 import { getJapanRegionBBox } from '../services/regionJumpUtils';
@@ -74,13 +71,9 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
       modeId: `view_${area.id}`,
       modeLabel: '閲覧',
       playKind: 'view',
-      mapScope:
-        area.id === 'world'
-          ? 'world'
-          : area.id === '00_japan'
-            ? 'japan_prefs'
-            : 'japan_munis',
+      mapScope: area.id === '00_japan' ? 'japan_prefs' : 'japan_munis',
       prefFilterCodes: area.prefCode ? [area.prefCode] : undefined,
+      regionFilter: area.id === '00_japan_cities' ? 'cities_all' : undefined,
       questionCount: area.totalCount,
       maxCount: area.totalCount,
       isCustomOrRandom: false,
@@ -121,19 +114,16 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
     animateToBBox([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2]);
   };
 
-  const jumpKind =
-    area.id === 'world'
-      ? 'world'
-      : area.id === '00_japan' || area.id === '00_japan_all'
-        ? 'japan'
-        : 'none';
+  const jumpKind: 'japan' | 'none' =
+    area.id === '00_japan' ||
+    area.id === '00_japan_all' ||
+    area.id === '00_japan_cities'
+      ? 'japan'
+      : 'none';
 
   const japanJumps = config.reverseJumpButtons
     ? [...JAPAN_REGION_JUMPS].reverse()
     : JAPAN_REGION_JUMPS;
-  const worldJumps = config.reverseJumpButtons
-    ? [...WORLD_REGION_JUMPS].reverse()
-    : WORLD_REGION_JUMPS;
 
   return (
     <div className="map-screen-root">
@@ -217,29 +207,18 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
         </div>
       </header>
 
-      {jumpKind !== 'none' && (
+      {jumpKind === 'japan' && (
         <div className="hud-jump-bar view-jump-bar">
-          {jumpKind === 'japan'
-            ? japanJumps.map((j) => (
-                <button
-                  key={j.id}
-                  type="button"
-                  className="jump-chip-btn"
-                  onClick={() => animateToBBox(getJapanRegionBBox(j.id))}
-                >
-                  {j.short}
-                </button>
-              ))
-            : worldJumps.map((j) => (
-                <button
-                  key={j.id}
-                  type="button"
-                  className="jump-chip-btn"
-                  onClick={() => animateToBBox(j.bbox)}
-                >
-                  {j.label}
-                </button>
-              ))}
+          {japanJumps.map((j) => (
+            <button
+              key={j.id}
+              type="button"
+              className="jump-chip-btn"
+              onClick={() => animateToBBox(getJapanRegionBBox(j.id))}
+            >
+              {j.short}
+            </button>
+          ))}
         </div>
       )}
 
@@ -288,6 +267,8 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
           forceShowNames={showNames}
           showCapitalMarks={showCapitalMarks}
           swapCapitalLabel={swapCapitalLabel}
+          enablePrefHoverTooltip={true}
+          enablePrefTint={true}
           onPieceClick={setSelectedPiece}
           onPanBy={panByScreenDelta}
           onFinishPan={finishPan}

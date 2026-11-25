@@ -20,6 +20,7 @@ import type {
   SavedProgress,
 } from '../types/game';
 import { formatTimeMs } from '../utils/formatters';
+import { APP_VERSION_LABEL } from '../version';
 import { DataTableModal } from './DataTableModal';
 import { MistakeReviewModal } from './MistakeReviewModal';
 import { SaveSlotsModal } from './SaveSlotsModal';
@@ -28,7 +29,8 @@ interface TitleScreenProps {
   areas: AreaDefinition[];
   prefsData: JapanPrefsData | null;
   totalMunis: number;
-  totalWorld: number;
+  totalCities: number;
+  cityCountByPref: Record<string, number>;
   config: ConfigState;
   records: Record<string, ModeBestRecord>;
   autoSave: SavedProgress | null;
@@ -44,16 +46,42 @@ interface TitleScreenProps {
 }
 
 const CHANGELOG_ITEMS: { ver: string; notes: string[] }[] = [
-  { ver: 'Ver 1.2.0', notes: ['間違えた問題の自動記憶＆復習モードを追加', '左クリックドラッグによるGoogleマップ風の滑らかな地図移動に対応'] },
-  { ver: 'Ver 1.1.0', notes: ['単一都道府県プレイ時にも周囲の都道府県白地図を表示', '世界地図モードに沖ノ鳥島・南鳥島等の地名を追加'] },
-  { ver: 'Ver 1.0.0', notes: ['全国1,747市区町村・47都道府県・自然地理100選・世界284国地域の精巧白地図パズル＆クイズ、データ11タブ集計、カスタム・ランダム、タグ管理を公開'] },
+  {
+    ver: 'Ver 2.0.0',
+    notes: [
+      '全国の「市」専用マップ（全国・北海道・7地方別）を追加',
+      'クイズに地図上ポインティング選択肢モードを追加',
+      'ヒント1（この辺サークル）・ヒント2（そのまま当てはめ）の2段階ヒントとヘッダー回数表示を追加',
+      '県当て以外の全モードに都道府県ホバーツールチップと低彩度の隣接県塗り分けを追加',
+      '回答後・配置後の地名表示をヘッダーからワンクリック切替に対応',
+      '日本の自然地理100選（山脈・山・河川・平野・湖）を実測データで再構築し、日本地理学習に特化した構成へ刷新',
+    ],
+  },
+  {
+    ver: 'Ver 1.2.0',
+    notes: [
+      '間違えた問題の自動記憶＆復習モードを追加',
+      '左クリックドラッグによるGoogleマップ風の滑らかな地図移動に対応',
+    ],
+  },
+  {
+    ver: 'Ver 1.1.0',
+    notes: ['単一都道府県プレイ時にも周囲の都道府県白地図を表示'],
+  },
+  {
+    ver: 'Ver 1.0.0',
+    notes: [
+      '全国1,747市区町村・47都道府県・日本の自然地理100選の精巧白地図パズル＆クイズ、データ11タブ集計、カスタム・ランダム、タグ管理を公開',
+    ],
+  },
 ];
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
   areas,
   prefsData,
   totalMunis,
-  totalWorld,
+  totalCities,
+  cityCountByPref,
   config,
   records,
   autoSave,
@@ -96,14 +124,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [customPlayKind, setCustomPlayKind] = useState<'puzzle' | 'quiz' | 'yomikata'>(
     'puzzle',
   );
-  const [customScope, setCustomScope] = useState<'municipalities' | 'prefectures'>(
+  const [customScope, setCustomScope] = useState<'municipalities' | 'cities' | 'prefectures'>(
     'municipalities',
   );
   const [customCount, setCustomCount] = useState(20);
 
   // Random mode state
   const [randomPool, setRandomPool] = useState<
-    'japan_munis' | 'japan_prefs' | 'world' | 'geography_100'
+    'japan_munis' | 'japan_cities' | 'japan_prefs' | 'geography_100'
   >('japan_munis');
   const [randomPlayKind, setRandomPlayKind] = useState<'puzzle' | 'quiz' | 'yomikata'>(
     'puzzle',
@@ -120,37 +148,50 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     if (customScope === 'prefectures') {
       return Math.max(1, customSelectedPrefs.size || 47);
     }
-    const sel = customSelectedPrefs.size > 0 ? customSelectedPrefs : new Set(prefsData.prefs.map((p) => p.code));
-    return prefsData.prefs
-      .filter((p) => sel.has(p.code))
-      .reduce((acc, p) => acc + p.muniCount, 0);
-  }, [prefsData, customScope, customSelectedPrefs]);
+    const sel =
+      customSelectedPrefs.size > 0
+        ? customSelectedPrefs
+        : new Set(prefsData.prefs.map((p) => p.code));
+    if (customScope === 'cities') {
+      const sum = prefsData.prefs
+        .filter((p) => sel.has(p.code))
+        .reduce((acc, p) => acc + (cityCountByPref[p.code] ?? 0), 0);
+      return Math.max(1, sum);
+    }
+    return Math.max(
+      1,
+      prefsData.prefs
+        .filter((p) => sel.has(p.code))
+        .reduce((acc, p) => acc + p.muniCount, 0),
+    );
+  }, [prefsData, customScope, customSelectedPrefs, cityCountByPref]);
 
   const randomMaxAvailable = useMemo(() => {
     if (randomPool === 'japan_prefs') return 47;
-    if (randomPool === 'world') return totalWorld || 284;
+    if (randomPool === 'japan_cities') return totalCities || 792;
     if (randomPool === 'geography_100') return 100;
     return totalMunis || 1747;
-  }, [randomPool, totalMunis, totalWorld]);
+  }, [randomPool, totalMunis, totalCities]);
 
   const filteredAreas = useMemo(() => {
     if (categoryTab === 'japan') return areas.filter((a) => a.category === 'japan');
     if (categoryTab === 'municipalities')
       return areas.filter((a) => a.category === 'municipalities');
-    if (categoryTab === 'world') return areas.filter((a) => a.category === 'world');
+    if (categoryTab === 'cities') return areas.filter((a) => a.category === 'cities');
     return areas.filter((a) => a.category === 'prefecture');
   }, [areas, categoryTab]);
 
-  const inferSpecBase = (area: AreaDefinition, mode: AreaSubMode): Omit<GameSessionSpec, 'sessionId' | 'questionCount' | 'maxCount'> => {
+  const inferSpecBase = (
+    area: AreaDefinition,
+    mode: AreaSubMode,
+  ): Omit<GameSessionSpec, 'sessionId' | 'questionCount' | 'maxCount'> => {
     const mapScope: GameSessionSpec['mapScope'] =
-      area.id === 'world'
-        ? 'world'
-        : mode.geoCategory &&
-            ['mountains', 'mountain', 'river', 'plain', 'lake'].includes(mode.geoCategory)
-          ? 'geography_100'
-          : area.id === '00_japan'
-            ? 'japan_prefs'
-            : 'japan_munis';
+      mode.geoCategory &&
+      ['mountains', 'mountain', 'river', 'plain', 'lake'].includes(mode.geoCategory)
+        ? 'geography_100'
+        : area.id === '00_japan'
+          ? 'japan_prefs'
+          : 'japan_munis';
     return {
       areaId: area.id,
       areaName: area.name,
@@ -160,7 +201,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       mapScope,
       geoCategory: mode.geoCategory,
       prefFilterCodes: area.prefCode ? [area.prefCode] : undefined,
-      regionFilter: mode.regionFilter,
+      regionFilter:
+        area.id === '00_japan_cities'
+          ? (mode.regionFilter ?? 'cities_all')
+          : mode.regionFilter,
       isCustomOrRandom: false,
     };
   };
@@ -229,15 +273,23 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         : prefsData?.prefs.map((p) => p.code) ?? [];
     const mapScope: GameSessionSpec['mapScope'] =
       customScope === 'prefectures' ? 'japan_prefs' : 'japan_munis';
-    const poolIds = await getModePoolIds(mapScope, codes);
+    const regionFilter = customScope === 'cities' ? 'cities_custom' : undefined;
+    const poolIds = await getModePoolIds(mapScope, codes, regionFilter);
+    if (poolIds.length === 0) return;
     const qCnt = Math.max(1, Math.min(poolIds.length, customCount));
     const fixedPieceIds = shuffleArray(poolIds).slice(0, qCnt);
     setShowCustomModal(false);
     onStartGame({
       sessionId: `custom_${Date.now()}`,
       areaId: 'custom',
-      areaName: `カスタム（${codes.length}都道府県）`,
-      modeId: `custom_${customPlayKind}`,
+      areaName:
+        customScope === 'cities'
+          ? `カスタム・市（${codes.length}都道府県）`
+          : `カスタム（${codes.length}都道府県）`,
+      modeId:
+        customScope === 'cities'
+          ? `custom_cities_${customPlayKind}`
+          : `custom_${customPlayKind}`,
       modeLabel:
         customPlayKind === 'puzzle'
           ? 'パズル'
@@ -247,6 +299,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       playKind: customPlayKind,
       mapScope,
       prefFilterCodes: codes,
+      regionFilter,
       questionCount: qCnt,
       maxCount: poolIds.length,
       isCustomOrRandom: true,
@@ -256,18 +309,18 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
   const handleStartRandom = async () => {
     const effectivePlayKind =
-      randomPool === 'world'
-        ? 'puzzle'
-        : randomPool === 'geography_100'
-          ? 'geography_quiz'
-          : randomPlayKind;
-    const poolIds = await getModePoolIds(randomPool);
+      randomPool === 'geography_100' ? 'geography_quiz' : randomPlayKind;
+    const mapScope: GameSessionSpec['mapScope'] =
+      randomPool === 'japan_cities' ? 'japan_munis' : randomPool;
+    const regionFilter = randomPool === 'japan_cities' ? 'cities_all' : undefined;
+    const poolIds = await getModePoolIds(mapScope, undefined, regionFilter);
+    if (poolIds.length === 0) return;
     const qCnt = Math.max(1, Math.min(poolIds.length, randomCount));
     const fixedPieceIds = shuffleArray(poolIds).slice(0, qCnt);
-    const labelMap = {
+    const labelMap: Record<typeof randomPool, string> = {
       japan_munis: 'ランダム（全国市区町村）',
+      japan_cities: 'ランダム（全国すべての市）',
       japan_prefs: 'ランダム（47都道府県）',
-      world: 'ランダム（世界地図）',
       geography_100: 'ランダム（自然地理100）',
     };
     setShowRandomModal(false);
@@ -283,7 +336,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             ? '読み方'
             : 'クイズ',
       playKind: effectivePlayKind,
-      mapScope: randomPool,
+      mapScope,
+      regionFilter,
       questionCount: qCnt,
       maxCount: poolIds.length,
       isCustomOrRandom: true,
@@ -301,12 +355,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           modeId: `${area.id}_data`,
           modeLabel: 'データ',
           playKind: 'view' as const,
-          mapScope: (area.id === 'world'
-            ? 'world'
-            : area.id === '00_japan'
-              ? 'japan_prefs'
-              : 'japan_munis') as GameSessionSpec['mapScope'],
+          mapScope: (area.id === '00_japan'
+            ? 'japan_prefs'
+            : 'japan_munis') as GameSessionSpec['mapScope'],
           prefFilterCodes: area.prefCode ? [area.prefCode] : undefined,
+          regionFilter: area.id === '00_japan_cities' ? 'cities_all' : undefined,
           isCustomOrRandom: false,
         };
     const loaded = await loadSessionMap({
@@ -323,13 +376,15 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       {screenMode === 'title' ? (
         <main className="title-hero-container">
           <div className="title-visual-card">
-            <div className="title-badge">精巧白地図版 ・ 日本＆世界地理学習ゲーム</div>
+            <div className="title-badge-row">
+              <div className="title-badge">精巧白地図版 ・ 日本地理学習ゲーム</div>
+              <span className="title-version-badge">Release {APP_VERSION_LABEL}</span>
+            </div>
             <h1 className="title-main-heading">
               全国市区町村パズル＆地理クイズ
             </h1>
             <p className="title-subtitle">
-              全国 {totalMunis.toLocaleString()} 市区町村（北方領土6村・政令指定都市対応）、47都道府県・県庁所在地、日本の自然地理100選、世界{' '}
-              {totalWorld} カ国地域の精巧白地図学習ゲーム
+              全国 {totalMunis.toLocaleString()} 市区町村（全 {totalCities.toLocaleString()} 市・北方領土6村・政令指定都市対応）、47都道府県・県庁所在地、日本の自然地理100選の精巧白地図学習ゲーム
             </p>
 
             {prefsData && (
@@ -378,6 +433,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 />
               </svg>
             )}
+            <div className="title-version-footer">Version {APP_VERSION_LABEL}</div>
           </div>
 
           <nav className="title-menu-panel">
@@ -390,7 +446,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               }}
             >
               <span className="menu-btn-title">ゲームをはじめる</span>
-              <span className="menu-btn-sub">日本・都道府県・全市区町村・世界の国</span>
+              <span className="menu-btn-sub">日本・都道府県・全市区町村・全国の市</span>
             </button>
 
             {autoSave && (
@@ -530,10 +586,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </button>
             <button
               type="button"
-              className={categoryTab === 'world' ? 'active' : ''}
-              onClick={() => setCategoryTab('world')}
+              className={categoryTab === 'cities' ? 'active' : ''}
+              onClick={() => setCategoryTab('cities')}
             >
-              世界の国と地名
+              全国・地方別 市
             </button>
           </div>
 
@@ -826,6 +882,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   </button>
                   <button
                     type="button"
+                    className={customScope === 'cities' ? 'active' : ''}
+                    onClick={() => setCustomScope('cities')}
+                  >
+                    選択県の市のみ
+                  </button>
+                  <button
+                    type="button"
                     className={customScope === 'prefectures' ? 'active' : ''}
                     onClick={() => setCustomScope('prefectures')}
                   >
@@ -1029,17 +1092,17 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   </button>
                   <button
                     type="button"
+                    className={randomPool === 'japan_cities' ? 'active' : ''}
+                    onClick={() => setRandomPool('japan_cities')}
+                  >
+                    全国すべての市 ({totalCities})
+                  </button>
+                  <button
+                    type="button"
                     className={randomPool === 'japan_prefs' ? 'active' : ''}
                     onClick={() => setRandomPool('japan_prefs')}
                   >
                     47都道府県
-                  </button>
-                  <button
-                    type="button"
-                    className={randomPool === 'world' ? 'active' : ''}
-                    onClick={() => setRandomPool('world')}
-                  >
-                    世界の国と地名 ({totalWorld})
                   </button>
                   <button
                     type="button"
@@ -1051,7 +1114,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 </div>
               </div>
 
-              {randomPool !== 'world' && randomPool !== 'geography_100' && (
+              {randomPool !== 'geography_100' && (
                 <div className="random-field">
                   <label>出題形式</label>
                   <div className="btn-group">
@@ -1272,11 +1335,12 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 <div className="other-pane">
                   <h4>地図・OSS クレジット</h4>
                   <p>
-                    この地図の作成にあたっては、国土地理院長の承認を得て、同院発行の「白地図」「自分で作る色別標高図」に準拠した公開地理空間データ（国土数値情報 N03-21 / Natural Earth 1:10m）を加工して使用しています。
+                    この地図の作成にあたっては、国土地理院の公開地理空間データ・標高データ、国土数値情報（行政区域データ N03-21）、および OpenStreetMap データを加工して使用しています。
                   </p>
                   <ul className="source-list">
                     <li>smartnews-smri/japan-topography (MIT / CC0, 国土数値情報 N03-21 加工)</li>
-                    <li>Natural Earth 1:10m Cultural &amp; Physical Vectors (Public Domain)</li>
+                    <li>OpenStreetMap contributors (ODbL, 日本の自然地理・河川・湖沼データ)</li>
+                    <li>国土地理院 地理院地図 座標・標高データ（山岳・平野・標高表現）</li>
                   </ul>
                 </div>
               )}
