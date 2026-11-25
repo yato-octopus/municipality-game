@@ -10,6 +10,7 @@ interface PuzzleGameProps {
   onSelectPiece: (piece: MapPieceItem | null) => void;
   onPlaceAttempt: (pieceId: string, hitSuccess: boolean) => void;
   onHoverTargetChange: (pieceId: string | null) => void;
+  onHelp: () => void;
   clientToSvg: (cx: number, cy: number) => [number, number];
   svgScalePxPerUnit: () => number;
 }
@@ -46,6 +47,7 @@ export const PuzzleGame: React.FC<PuzzleGameProps> = ({
   onSelectPiece,
   onPlaceAttempt,
   onHoverTargetChange,
+  onHelp,
   clientToSvg,
   svgScalePxPerUnit,
 }) => {
@@ -147,7 +149,12 @@ export const PuzzleGame: React.FC<PuzzleGameProps> = ({
   }, [selectedPieceId]);
 
   if (!config.showPieceList) {
-    return null;
+    if (config.disableHelpButton) return null;
+    return (
+      <button type="button" className="floating-hint-btn" onClick={onHelp}>
+        ？ヒント
+      </button>
+    );
   }
 
   return (
@@ -163,6 +170,15 @@ export const PuzzleGame: React.FC<PuzzleGameProps> = ({
               })()}
           </span>
           <div className="puzzle-tray-ctrls">
+            {!config.disableHelpButton && (
+              <button
+                type="button"
+                className="btn-warning btn-xs"
+                onClick={onHelp}
+              >
+                ？ヒント
+              </button>
+            )}
             <button
               type="button"
               className="tray-nav-btn"

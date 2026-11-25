@@ -21,7 +21,6 @@ export interface PrefectureMeta {
   areaKm2: number;
   capital: string;
   capitalRuby: string;
-  electionTurnout: number;
   regions: string[];
   wiki: string;
   bbox: BBox;
@@ -60,7 +59,9 @@ export interface GeographyFeature {
   category: 'mountain' | 'mountains' | 'river' | 'plain' | 'lake';
   geometryType: 'polygon' | 'line';
   pts: [number, number][];
+  path?: string;
   center: [number, number];
+  bbox?: BBox;
   wiki: string;
   desc: string;
 }
@@ -102,7 +103,6 @@ export interface MapPieceItem {
   prefName?: string;
   population: number;
   areaKm2: number;
-  electionTurnout?: number;
   regionLabel: string;     // 地方
   adminAreaLabel: string;  // 行政地域 / 振興局
   countyLabel: string;     // 郡 / 場所
@@ -110,6 +110,7 @@ export interface MapPieceItem {
   desc?: string;
   path?: string;
   linePts?: [number, number][];
+  geoCategory?: GeographyFeature['category'];
   geometryType: 'path' | 'polygon_pts' | 'line_pts';
   bbox: BBox;
   center: [number, number];
@@ -137,7 +138,6 @@ export interface AreaDefinition {
   prefCode?: string;
   subTitle: string;
   population: number;
-  electionTurnout?: number;
   wiki: string;
   totalCount: number;
   modes: AreaSubMode[];
@@ -203,7 +203,6 @@ export interface ConfigState {
   nameOnDrag: boolean;
   nameOnFix: boolean;
   dragInertia: number;           // 0..1.0
-  keypadMode: '50on' | 'swipe';
 }
 
 export interface ModeBestRecord {
@@ -243,7 +242,6 @@ export type SortTabKey =
   | 'kanzi'
   | 'hirakana'
   | 'moziCount'
-  | 'election'
   | 'similarName'
   | 'matiTyou'
   | 'muraSon'

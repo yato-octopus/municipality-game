@@ -190,7 +190,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     zoomByFactor,
     setZoomAtPoint,
     panByScreenDelta,
-    startInertia,
+    finishPan,
     clientToSvg,
     svgScalePxPerUnit,
   } = useMapViewport({
@@ -198,6 +198,11 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     dragInertia: config.dragInertia,
     fpsMode: config.fpsMode,
   });
+
+  const elapsedMsRef = useRef(elapsedMs);
+  useEffect(() => {
+    elapsedMsRef.current = elapsedMs;
+  }, [elapsedMs]);
 
   const buildProgressSnapshot = useCallback(
     (
@@ -220,11 +225,11 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
       completedIds: Array.from(nextCompleted),
       sessionWrongIds: Array.from(nextWrong),
       currentIndex: nextIdx,
-      elapsedMs,
+      elapsedMs: elapsedMsRef.current,
       misses: nextMisses,
       hintsUsed: nextHints,
     }),
-    [spec, orderedTargets, elapsedMs],
+    [spec, orderedTargets],
   );
 
   // Auto-save on page hide/unload when setting is active or exiting
@@ -363,7 +368,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         playCompleteFanfare(config.seVolume, config.fixActionSound);
         const { isNewBest: newRec } = onRecordClear(
           spec.modeId,
-          elapsedMs,
+          elapsedMsRef.current,
           misses,
           spec.questionCount,
           spec.maxCount,
@@ -407,7 +412,6 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
       config.fixActionSound,
       config.fixActionVibration,
       config.autoSaveTiming,
-      elapsedMs,
       misses,
       hintsUsed,
       currentIndex,
@@ -468,29 +472,32 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     onExitToTitle();
   };
 
-  const handleMapPieceClick = (clicked: MapPieceItem) => {
-    if (isCompleted) {
-      setInspectedPiece(clicked);
-      return;
-    }
-    if (spec.playKind === 'puzzle') {
-      if (selectedPiece) {
-        if (clicked.id === selectedPiece.id) {
-          handlePieceSuccess(clicked.id);
-        } else if (!completedIds.has(clicked.id)) {
-          handleMiss(selectedPiece);
+  const handleMapPieceClick = useCallback(
+    (clicked: MapPieceItem) => {
+      if (isCompleted) {
+        setInspectedPiece(clicked);
+        return;
+      }
+      if (spec.playKind === 'puzzle') {
+        if (selectedPiece) {
+          if (clicked.id === selectedPiece.id) {
+            handlePieceSuccess(clicked.id);
+          } else if (!completedIds.has(clicked.id)) {
+            handleMiss(selectedPiece);
+          }
+          return;
+        }
+        if (completedIds.has(clicked.id)) {
+          setInspectedPiece(clicked);
         }
         return;
       }
       if (completedIds.has(clicked.id)) {
         setInspectedPiece(clicked);
       }
-      return;
-    }
-    if (completedIds.has(clicked.id)) {
-      setInspectedPiece(clicked);
-    }
-  };
+    },
+    [isCompleted, spec.playKind, selectedPiece, completedIds, handlePieceSuccess, handleMiss],
+  );
 
   const handleStartMistakeReviewFromResult = () => {
     if (wrongPieces.length === 0) return;
@@ -538,7 +545,6 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         onZoomChange={(z) => setZoomAtPoint(z)}
         onJumpToBBox={(bbox) => animateToBBox(bbox)}
         onResetZoom={() => loadedMap && fitBBox(loadedMap.viewBBox)}
-        onHelp={handleHelp}
         onOpenConfig={() => setShowConfig(true)}
         onOpenSave={() => setShowSaveModal(true)}
         onBack={handleBackConfirmExit}
@@ -574,7 +580,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
           isTerrainMode={isTerrainMode}
           onPieceClick={handleMapPieceClick}
           onPanBy={panByScreenDelta}
-          onStartInertia={startInertia}
+          onFinishPan={finishPan}
           onZoomByFactor={zoomByFactor}
         />
       )}
@@ -601,6 +607,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
                 }
               }}
               onHoverTargetChange={setHoverTargetId}
+              onHelp={handleHelp}
               clientToSvg={clientToSvg}
               svgScalePxPerUnit={svgScalePxPerUnit}
             />
@@ -612,7 +619,9 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
               activePiece={activePiece}
               allPoolPieces={loadedMap.allPoolPieces}
               isGeographyQuiz={spec.playKind === 'geography_quiz'}
+              disableHelpButton={config.disableHelpButton}
               onFocusPiece={focusPieceSmooth}
+              onHelp={handleHelp}
               onAnswerResult={(correct) => {
                 if (correct) {
                   window.setTimeout(() => handlePieceSuccess(activePiece.id), 180);
@@ -629,11 +638,11 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
               activePiece={activePiece}
               isCapitalYomikata={spec.geoCategory === 'capital_y'}
               config={config}
-              onConfigChange={onConfigChange}
               onFocusPiece={focusPieceSmooth}
+              onHelp={handleHelp}
               onAnswerResult={(correct) => {
                 if (correct) {
-                  window.setTimeout(() => handlePieceSuccess(activePiece.id), 180);
+                  window.setTimeout(() => handlePieceSuccess(activePiece.id), 120);
                 } else {
                   handleMiss(activePiece);
                 }

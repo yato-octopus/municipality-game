@@ -21,7 +21,6 @@ interface HudOverlayProps {
   onZoomChange: (nextZoom: number) => void;
   onJumpToBBox: (bbox: BBox) => void;
   onResetZoom: () => void;
-  onHelp: () => void;
   onOpenConfig: () => void;
   onOpenSave?: () => void;
   onBack: () => void;
@@ -47,7 +46,6 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   onZoomChange,
   onJumpToBBox,
   onResetZoom,
-  onHelp,
   onOpenConfig,
   onOpenSave,
   onBack,
@@ -103,11 +101,6 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
         </div>
 
         <div className="hud-actions-group">
-          {!config.disableHelpButton && (
-            <button type="button" className="hud-btn hud-btn-help" onClick={onHelp}>
-              ？ヒント
-            </button>
-          )}
           {!isCustomOrRandom && onOpenSave && (
             <button type="button" className="hud-btn" onClick={onOpenSave}>
               セーブ

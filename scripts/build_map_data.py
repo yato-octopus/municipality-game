@@ -261,7 +261,6 @@ def build_japan_prefs_and_munis() -> tuple[list[dict[str, Any]], dict[str, str],
             "areaKm2": parse_float(r[4]),
             "capital": clean_str(r[5]),
             "capitalRuby": clean_str(r[6]),
-            "electionTurnout": parse_float(r[7]),
             "regions": [clean_str(x) for x in r[8:11] if clean_str(x)],
             "wiki": clean_str(r[11]),
         }

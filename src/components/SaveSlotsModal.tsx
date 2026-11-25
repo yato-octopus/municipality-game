@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { formatTimeMs } from '../utils/formatters';
 import type { SavedProgress } from '../types/game';
 
@@ -21,11 +21,6 @@ export const SaveSlotsModal: React.FC<SaveSlotsModalProps> = ({
   onDeleteSave,
   onClose,
 }) => {
-  const [confirmAction, setConfirmAction] = useState<{
-    type: 'overwrite' | 'load' | 'delete';
-    save: SavedProgress;
-  } | null>(null);
-
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card save-modal" onClick={(e) => e.stopPropagation()}>
@@ -65,7 +60,7 @@ export const SaveSlotsModal: React.FC<SaveSlotsModalProps> = ({
                     <button
                       type="button"
                       className="btn-primary btn-sm"
-                      onClick={() => setConfirmAction({ type: 'load', save: s })}
+                      onClick={() => onLoadSave(s)}
                     >
                       ロード
                     </button>
@@ -73,7 +68,7 @@ export const SaveSlotsModal: React.FC<SaveSlotsModalProps> = ({
                       <button
                         type="button"
                         className="btn-secondary btn-sm"
-                        onClick={() => setConfirmAction({ type: 'overwrite', save: s })}
+                        onClick={() => onOverwriteSave?.(s.slotId)}
                       >
                         上書き
                       </button>
@@ -81,51 +76,13 @@ export const SaveSlotsModal: React.FC<SaveSlotsModalProps> = ({
                     <button
                       type="button"
                       className="btn-danger btn-sm"
-                      onClick={() => setConfirmAction({ type: 'delete', save: s })}
+                      onClick={() => onDeleteSave(s.slotId)}
                     >
                       削除
                     </button>
                   </div>
                 </div>
               ))}
-            </div>
-          )}
-
-          {confirmAction && (
-            <div className="inline-confirm-box">
-              <p>
-                {confirmAction.type === 'overwrite' &&
-                  `「${confirmAction.save.title}」を上書き保存しますか？`}
-                {confirmAction.type === 'load' &&
-                  `「${confirmAction.save.title}」をロードしますか？`}
-                {confirmAction.type === 'delete' &&
-                  `「${confirmAction.save.title}」のセーブデータを消去しますか？`}
-              </p>
-              <div className="inline-confirm-actions">
-                <button
-                  type="button"
-                  className={confirmAction.type === 'delete' ? 'btn-danger btn-sm' : 'btn-primary btn-sm'}
-                  onClick={() => {
-                    if (confirmAction.type === 'overwrite') {
-                      onOverwriteSave?.(confirmAction.save.slotId);
-                    } else if (confirmAction.type === 'load') {
-                      onLoadSave(confirmAction.save);
-                    } else {
-                      onDeleteSave(confirmAction.save.slotId);
-                    }
-                    setConfirmAction(null);
-                  }}
-                >
-                  はい
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost btn-sm"
-                  onClick={() => setConfirmAction(null)}
-                >
-                  いいえ
-                </button>
-              </div>
             </div>
           )}
         </div>

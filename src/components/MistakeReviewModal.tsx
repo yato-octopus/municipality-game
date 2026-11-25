@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { createSessionId } from '../utils/formatters';
 import type { GameSessionSpec, MistakeEntry } from '../types/game';
 
@@ -33,8 +33,6 @@ export const MistakeReviewModal: React.FC<MistakeReviewModalProps> = ({
   onClearAll,
   onClose,
 }) => {
-  const [confirmClearAll, setConfirmClearAll] = useState(false);
-
   const groups = useMemo<ModeMistakeGroup[]>(() => {
     const byMode = new Map<string, ModeMistakeGroup>();
     for (const m of mistakes) {
@@ -254,39 +252,14 @@ export const MistakeReviewModal: React.FC<MistakeReviewModalProps> = ({
               ))}
             </div>
           )}
-
-          {confirmClearAll && (
-            <div className="inline-confirm-box">
-              <p>記憶している間違えた問題をすべて消去しますか？</p>
-              <div className="inline-confirm-actions">
-                <button
-                  type="button"
-                  className="btn-danger btn-sm"
-                  onClick={() => {
-                    onClearAll();
-                    setConfirmClearAll(false);
-                  }}
-                >
-                  すべて消去する
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost btn-sm"
-                  onClick={() => setConfirmClearAll(false)}
-                >
-                  キャンセル
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="modal-footer">
-          {mistakes.length > 0 && !confirmClearAll && (
+          {mistakes.length > 0 && (
             <button
               type="button"
               className="btn-danger btn-sm"
-              onClick={() => setConfirmClearAll(true)}
+              onClick={onClearAll}
             >
               すべて消去
             </button>

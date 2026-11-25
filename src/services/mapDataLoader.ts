@@ -187,7 +187,6 @@ function prefToPiece(
     prefName: p.name,
     population: p.population,
     areaKm2: p.areaKm2,
-    electionTurnout: p.electionTurnout,
     regionLabel: cleanRegionLabel(p.regions[0] ?? ''),
     adminAreaLabel: p.capital,
     countyLabel: '',
@@ -258,12 +257,23 @@ function geoToPiece(f: GeographyFeature): MapPieceItem {
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  for (const [x, y] of f.pts) {
-    if (x < minX) minX = x;
-    if (y < minY) minY = y;
-    if (x > maxX) maxX = x;
-    if (y > maxY) maxY = y;
+  if (f.bbox && f.bbox.length === 4 && f.bbox.every(Number.isFinite)) {
+    [minX, minY, maxX, maxY] = f.bbox;
+  } else {
+    for (const [x, y] of f.pts) {
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+    if (!Number.isFinite(minX)) {
+      minX = f.center[0];
+      minY = f.center[1];
+      maxX = f.center[0];
+      maxY = f.center[1];
+    }
   }
+  const pad = f.category === 'lake' || f.category === 'mountain' ? 10 : 14;
   const catLabelMap: Record<GeographyFeature['category'], string> = {
     mountains: '山脈・山地・高地',
     mountain: '山',
@@ -284,9 +294,11 @@ function geoToPiece(f: GeographyFeature): MapPieceItem {
     countyLabel: '',
     wiki: f.wiki,
     desc: f.desc,
+    path: f.path,
     linePts: f.pts,
+    geoCategory: f.category,
     geometryType: f.geometryType === 'line' ? 'line_pts' : 'polygon_pts',
-    bbox: [minX - 18, minY - 18, maxX + 18, maxY + 18],
+    bbox: [minX - pad, minY - pad, maxX + pad, maxY + pad],
     center: f.center,
     areaPx: 120,
   };

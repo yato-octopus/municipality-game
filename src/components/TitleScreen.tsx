@@ -46,7 +46,7 @@ interface TitleScreenProps {
 const CHANGELOG_ITEMS: { ver: string; notes: string[] }[] = [
   { ver: 'Ver 1.2.0', notes: ['間違えた問題の自動記憶＆復習モードを追加', '左クリックドラッグによるGoogleマップ風の滑らかな地図移動に対応'] },
   { ver: 'Ver 1.1.0', notes: ['単一都道府県プレイ時にも周囲の都道府県白地図を表示', '世界地図モードに沖ノ鳥島・南鳥島等の地名を追加'] },
-  { ver: 'Ver 1.0.0', notes: ['全国1,747市区町村・47都道府県・自然地理100選・世界284国地域の精巧白地図パズル＆クイズ、データ12タブ集計、カスタム・ランダム、タグ管理を公開'] },
+  { ver: 'Ver 1.0.0', notes: ['全国1,747市区町村・47都道府県・自然地理100選・世界284国地域の精巧白地図パズル＆クイズ、データ11タブ集計、カスタム・ランダム、タグ管理を公開'] },
 ];
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
@@ -477,7 +477,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 }}
               >
                 <span className="menu-btn-title">白地図閲覧・データ</span>
-                <span className="menu-btn-sub">標高図切替・12種集計テーブル</span>
+                <span className="menu-btn-sub">標高図切替・11種集計テーブル</span>
               </button>
               <button
                 type="button"
@@ -612,9 +612,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             <div className="modal-body">
               <div className="gameinfo-meta-strip">
                 <span>人口: {selectedArea.population.toLocaleString()}人</span>
-                {selectedArea.electionTurnout != null && (
-                  <span>参院選投票率: {selectedArea.electionTurnout.toFixed(2)}%</span>
-                )}
                 <div className="gameinfo-quick-links">
                   <button
                     type="button"
@@ -1266,7 +1263,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   <h4>収録数値データの出典</h4>
                   <ul className="source-list">
                     <li>人口：総務省「平成31年住民基本台帳人口・世帯数」</li>
-                    <li>投票率：総務省「令和元年7月21日執行 参議院議員通常選挙 速報結果」</li>
                     <li>面積：国土地理院「令和元年全国都道府県市区町村別面積調（7月1日時点）」</li>
                   </ul>
                 </div>
@@ -1276,11 +1272,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 <div className="other-pane">
                   <h4>地図・OSS クレジット</h4>
                   <p>
-                    この地図の作成にあたっては、国土地理院長の承認を得て、同院発行の「白地図」「自分で作る色別標高図」に準拠した公開地理空間データ（国土数値情報 N03-21 / Natural Earth 50m）を加工して使用しています。
+                    この地図の作成にあたっては、国土地理院長の承認を得て、同院発行の「白地図」「自分で作る色別標高図」に準拠した公開地理空間データ（国土数値情報 N03-21 / Natural Earth 1:10m）を加工して使用しています。
                   </p>
                   <ul className="source-list">
                     <li>smartnews-smri/japan-topography (MIT / CC0, 国土数値情報 N03-21 加工)</li>
-                    <li>world-atlas / Natural Earth 50m (ISC License)</li>
+                    <li>Natural Earth 1:10m Cultural &amp; Physical Vectors (Public Domain)</li>
                   </ul>
                 </div>
               )}

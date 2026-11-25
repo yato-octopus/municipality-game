@@ -6,7 +6,9 @@ interface QuizGameProps {
   activePiece: MapPieceItem;
   allPoolPieces: MapPieceItem[];
   isGeographyQuiz: boolean;
+  disableHelpButton: boolean;
   onFocusPiece: (piece: MapPieceItem) => void;
+  onHelp: () => void;
   onAnswerResult: (correct: boolean) => void;
 }
 
@@ -14,7 +16,9 @@ export const QuizGame: React.FC<QuizGameProps> = ({
   activePiece,
   allPoolPieces,
   isGeographyQuiz,
+  disableHelpButton,
   onFocusPiece,
+  onHelp,
   onAnswerResult,
 }) => {
   const [disabledChoiceIds, setDisabledChoiceIds] = useState<Set<string>>(new Set());
@@ -64,13 +68,24 @@ export const QuizGame: React.FC<QuizGameProps> = ({
         <span className="quiz-prompt-text">
           地図でハイライトされている場所の名前を選択してください
         </span>
-        <button
-          type="button"
-          className="btn-secondary btn-xs"
-          onClick={() => onFocusPiece(activePiece)}
-        >
-          📍 場所へフォーカス
-        </button>
+        <div className="quiz-prompt-actions">
+          <button
+            type="button"
+            className="btn-secondary btn-xs"
+            onClick={() => onFocusPiece(activePiece)}
+          >
+            📍 場所へフォーカス
+          </button>
+          {!disableHelpButton && (
+            <button
+              type="button"
+              className="btn-warning btn-xs"
+              onClick={onHelp}
+            >
+              ？ヒント
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="quiz-choices-grid">

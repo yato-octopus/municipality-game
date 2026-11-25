@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type { ViewBoxRect } from '../hooks/useMapViewport';
 import type { InsetBoxSpec } from '../services/mapDataLoader';
-import type { ConfigState, MapPieceItem, MapTag } from '../types/game';
+import type { ConfigState, GeographyFeature, MapPieceItem, MapTag } from '../types/game';
 
 interface SafariGestureEvent extends Event {
   scale: number;
@@ -36,7 +36,7 @@ interface MapCanvasProps {
   isTerrainMode?: boolean;
   onPieceClick?: (piece: MapPieceItem) => void;
   onPanBy: (dx: number, dy: number) => void;
-  onStartInertia: (vx: number, vy: number) => void;
+  onFinishPan: (vx: number, vy: number) => void;
   onZoomByFactor: (factor: number, clientX?: number, clientY?: number) => void;
 }
 
@@ -61,7 +61,60 @@ function getHypsometricColor(piece: MapPieceItem): string {
   return HYPSOMETRIC_PALETTE[idx];
 }
 
-export const MapCanvas: React.FC<MapCanvasProps> = ({
+type TerrainCategory = GeographyFeature['category'];
+
+const LABEL_TO_GEO_CATEGORY: Record<string, TerrainCategory> = {
+  山: 'mountain',
+  '山脈・山地・高地': 'mountains',
+  河川: 'river',
+  平野: 'plain',
+  湖: 'lake',
+};
+
+const TERRAIN_CATEGORY_ORDER: Record<TerrainCategory, number> = {
+  plain: 0,
+  mountains: 1,
+  river: 2,
+  lake: 3,
+  mountain: 4,
+};
+
+function resolveGeoCategory(piece: MapPieceItem): TerrainCategory {
+  return piece.geoCategory ?? LABEL_TO_GEO_CATEGORY[piece.regionLabel] ?? 'mountain';
+}
+
+function getMountainPeakHalfWidth(viewBoxW: number): number {
+  return Math.max(2.6, Math.min(7.5, viewBoxW * 0.0085));
+}
+
+function computeTerrainGeomCache(piece: MapPieceItem): { ptsStr: string; rawSpan: number } {
+  const pts = piece.linePts ?? [];
+  if (pts.length === 0) {
+    return {
+      ptsStr: '',
+      rawSpan: Math.max(piece.bbox[2] - piece.bbox[0], piece.bbox[3] - piece.bbox[1]),
+    };
+  }
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const parts: string[] = new Array(pts.length);
+  for (let i = 0; i < pts.length; i += 1) {
+    const [x, y] = pts[i];
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+    parts[i] = `${x.toFixed(2)},${y.toFixed(2)}`;
+  }
+  const rawSpan = Number.isFinite(minX)
+    ? Math.max(maxX - minX, maxY - minY)
+    : Math.max(piece.bbox[2] - piece.bbox[0], piece.bbox[3] - piece.bbox[1]);
+  return { ptsStr: parts.join(' '), rawSpan };
+}
+
+const MapCanvasInner: React.FC<MapCanvasProps> = ({
   svgRef,
   viewBox,
   viewBoxString,
@@ -83,10 +136,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   isTerrainMode = false,
   onPieceClick,
   onPanBy,
-  onStartInertia,
+  onFinishPan,
   onZoomByFactor,
 }) => {
-  const [isPanning, setIsPanning] = useState(false);
   const localSvgRef = useRef<SVGSVGElement | null>(null);
 
   const mergedSvgRef = useCallback(
@@ -97,6 +149,14 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     [svgRef],
   );
 
+  // Sync committed viewBoxString to DOM without letting unrelated renders overwrite live pan/inertia viewBox
+  useLayoutEffect(() => {
+    const el = localSvgRef.current;
+    if (el) {
+      el.setAttribute('viewBox', viewBoxString);
+    }
+  }, [viewBoxString]);
+
   const dragRef = useRef<{
     active: boolean;
     pointerId: number | null;
@@ -104,10 +164,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     startY: number;
     lastX: number;
     lastY: number;
-    lastTime: number;
-    vx: number;
-    vy: number;
     moved: boolean;
+    samples: { x: number; y: number; t: number }[];
   }>({
     active: false,
     pointerId: null,
@@ -115,10 +173,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     startY: 0,
     lastX: 0,
     lastY: 0,
-    lastTime: 0,
-    vx: 0,
-    vy: 0,
     moved: false,
+    samples: [],
   });
 
   const suppressClickRef = useRef(false);
@@ -127,11 +183,11 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
   const onZoomByFactorRef = useRef(onZoomByFactor);
   const onPanByRef = useRef(onPanBy);
-  const onStartInertiaRef = useRef(onStartInertia);
+  const onFinishPanRef = useRef(onFinishPan);
   useEffect(() => {
     onZoomByFactorRef.current = onZoomByFactor;
     onPanByRef.current = onPanBy;
-    onStartInertiaRef.current = onStartInertia;
+    onFinishPanRef.current = onFinishPan;
   });
 
   // Bind non-passive wheel & Safari gesture listeners for accurate trackpad pinch + mouse wheel zoom
@@ -226,18 +282,19 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       const dy = e.clientY - d.lastY;
       if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > 4) {
         d.moved = true;
-        setIsPanning(true);
+        localSvgRef.current?.classList.add('is-panning');
       }
       if (d.moved) {
         onPanByRef.current(dx, dy);
       }
       const now = performance.now();
-      const dt = Math.max(4, now - d.lastTime);
-      d.vx = d.vx * 0.4 + (dx / dt) * 0.6;
-      d.vy = d.vy * 0.4 + (dy / dt) * 0.6;
+      d.samples.push({ x: e.clientX, y: e.clientY, t: now });
+      // Keep only recent 90ms window for accurate release velocity (zero stale-velocity jerk)
+      while (d.samples.length > 2 && now - d.samples[0].t > 90) {
+        d.samples.shift();
+      }
       d.lastX = e.clientX;
       d.lastY = e.clientY;
-      d.lastTime = now;
     };
 
     const handleWinUp = (e: PointerEvent) => {
@@ -247,18 +304,31 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       }
       const d = dragRef.current;
       if (d.active && (d.pointerId == null || e.pointerId === d.pointerId)) {
+        localSvgRef.current?.classList.remove('is-panning');
         if (d.moved) {
           suppressClickRef.current = true;
           window.setTimeout(() => {
             suppressClickRef.current = false;
           }, 80);
-          if (Math.hypot(d.vx, d.vy) > 0.08) {
-            onStartInertiaRef.current(d.vx, d.vy);
+
+          const now = performance.now();
+          let vx = 0;
+          let vy = 0;
+          const newest = d.samples[d.samples.length - 1];
+          // Only coast if the pointer was still actively moving within the last 45ms
+          if (newest && now - newest.t < 45 && d.samples.length >= 2) {
+            const oldest = d.samples[0];
+            const spanMs = newest.t - oldest.t;
+            if (spanMs >= 8) {
+              vx = (newest.x - oldest.x) / spanMs;
+              vy = (newest.y - oldest.y) / spanMs;
+            }
           }
+          onFinishPanRef.current(vx, vy);
         }
         d.active = false;
         d.pointerId = null;
-        setIsPanning(false);
+        d.samples = [];
       }
     };
 
@@ -302,9 +372,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       const pts = Array.from(touchPointersRef.current.values());
       pinchPrevDistRef.current = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
       dragRef.current.active = false;
-      setIsPanning(false);
+      localSvgRef.current?.classList.remove('is-panning');
       return;
     }
+    const now = performance.now();
     dragRef.current = {
       active: true,
       pointerId: e.pointerId,
@@ -312,10 +383,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       startY: e.clientY,
       lastX: e.clientX,
       lastY: e.clientY,
-      lastTime: performance.now(),
-      vx: 0,
-      vy: 0,
       moved: false,
+      samples: [{ x: e.clientX, y: e.clientY, t: now }],
     };
   };
 
@@ -417,7 +486,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const renderPiecePath = (piece: MapPieceItem) => {
     const st = getPieceStyle(piece);
     const clickable = Boolean(onPieceClick);
-    const isTiny = piece.isMarker || piece.areaPx < 6;
+    const isTiny = piece.areaPx < 3;
+    const isHover = hoverTargetId === piece.id;
     return (
       <g
         key={piece.id}
@@ -439,10 +509,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             data-piece-id={piece.id}
             cx={piece.center[0]}
             cy={piece.center[1]}
-            r={piece.isMarker ? Math.max(1.8, viewBox.w * 0.0055) : smallHitRadius}
-            fill={piece.isMarker ? st.fill : 'transparent'}
-            stroke={piece.isMarker ? st.stroke : 'rgba(15, 23, 42, 0.28)'}
-            strokeWidth={piece.isMarker ? 1.1 : 0.6}
+            r={smallHitRadius}
+            fill="transparent"
+            stroke={isHover ? '#d97706' : 'none'}
+            strokeWidth={isHover ? 1.4 : 0}
             vectorEffect="non-scaling-stroke"
           />
         )}
@@ -463,7 +533,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         <g transform={`translate(${inset.tx.toFixed(3)}, ${inset.ty.toFixed(3)}) scale(${inset.scale.toFixed(5)})`}>
           {pieces.map((piece) => {
             const st = getPieceStyle(piece);
-            const isTiny = piece.isMarker || piece.areaPx < 6;
+            const isTiny = piece.areaPx < 3;
+            const isHover = hoverTargetId === piece.id;
             return (
               <g
                 key={piece.id}
@@ -495,8 +566,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                     }
                     r={Math.max(1.2, smallHitRadius / inset.scale)}
                     fill="transparent"
-                    stroke="rgba(15, 23, 42, 0.25)"
-                    strokeWidth={0.6}
+                    stroke={isHover ? '#d97706' : 'none'}
+                    strokeWidth={isHover ? 1.2 : 0}
                     vectorEffect="non-scaling-stroke"
                   />
                 )}
@@ -550,74 +621,605 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     });
   };
 
+  const terrainGeomMap = useMemo(() => {
+    const map = new Map<string, { ptsStr: string; rawSpan: number }>();
+    if (!isTerrainMode) return map;
+    for (const p of contextPieces) {
+      map.set(p.id, computeTerrainGeomCache(p));
+    }
+    return map;
+  }, [isTerrainMode, contextPieces]);
+
+  const orderedTerrainPieces = useMemo(() => {
+    if (!isTerrainMode) return [];
+    const statusRank = (id: string): number => {
+      if (id === hintPieceId || id === activePieceId) return 3;
+      if (id === selectedPieceId) return 2;
+      if (completedIds.has(id)) return 1;
+      return 0;
+    };
+    return [...contextPieces].sort((a, b) => {
+      const sa = statusRank(a.id);
+      const sb = statusRank(b.id);
+      if (sa !== sb) return sa - sb;
+      return TERRAIN_CATEGORY_ORDER[resolveGeoCategory(a)] - TERRAIN_CATEGORY_ORDER[resolveGeoCategory(b)];
+    });
+  }, [isTerrainMode, contextPieces, completedIds, activePieceId, hintPieceId, selectedPieceId]);
+
   const renderTerrainLayer = () => {
     if (!isTerrainMode) return null;
+    const clickableClass = onPieceClick ? 'map-piece-clickable' : undefined;
+    const baseMountainHw = getMountainPeakHalfWidth(viewBox.w);
+
     return (
       <g>
-        {contextPieces.map((f) => {
+        {orderedTerrainPieces.map((f) => {
           const isCompleted = completedIds.has(f.id);
           const isActive = activePieceId === f.id;
           const isHint = hintPieceId === f.id;
-          const pts = f.linePts ?? [];
-          if (pts.length === 0) return null;
-          const ptsStr = pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
-          const cat = f.regionLabel;
-          let color = '#64748b';
-          if (cat === '山') color = '#b45309';
-          else if (cat === '湖') color = '#0284c7';
-          else if (cat === '河川') color = '#2563eb';
-          else if (cat === '平野') color = '#65a30d';
-          else if (cat === '山脈・山地・高地') color = '#9a3412';
-
+          const isSelected = selectedPieceId === f.id;
           const highlighted = isActive || isHint;
-          const opacity = highlighted ? 1 : isCompleted ? 0.88 : 0.32;
-          const activeStroke = isHint ? '#dc2626' : isActive ? '#ea580c' : color;
+          const cat = resolveGeoCategory(f);
+          const hasPath = Boolean(f.path && f.path.trim().length > 0);
+          const pts = f.linePts ?? [];
+          const cached = terrainGeomMap.get(f.id);
+          const ptsStr = cached?.ptsStr ?? '';
+          const rawSpan =
+            cached?.rawSpan ?? Math.max(f.bbox[2] - f.bbox[0], f.bbox[3] - f.bbox[1]);
+
+          if (cat === 'mountain') {
+            const [cx, cy] = f.center;
+            const hw = highlighted
+              ? baseMountainHw * 1.18
+              : isSelected
+                ? baseMountainHw * 1.1
+                : baseMountainHw;
+            const h = hw * 1.55;
+            const apexY = cy - (h * 2) / 3;
+            const baseY = cy + h / 3;
+            const peakPts = `${cx.toFixed(2)},${apexY.toFixed(2)} ${(cx - hw).toFixed(2)},${baseY.toFixed(2)} ${(cx + hw).toFixed(2)},${baseY.toFixed(2)}`;
+            const sY = apexY + h * 0.36;
+            const sYLow = apexY + h * 0.44;
+            const sW = hw * 0.36;
+            const snowPts = `${cx.toFixed(2)},${apexY.toFixed(2)} ${(cx - sW).toFixed(2)},${sY.toFixed(2)} ${(cx - sW * 0.32).toFixed(2)},${sYLow.toFixed(2)} ${cx.toFixed(2)},${(apexY + h * 0.34).toFixed(2)} ${(cx + sW * 0.32).toFixed(2)},${sYLow.toFixed(2)} ${(cx + sW).toFixed(2)},${sY.toFixed(2)}`;
+
+            const fill = isHint
+              ? '#dc2626'
+              : isActive
+                ? '#ea580c'
+                : isSelected
+                  ? '#0284c7'
+                  : isCompleted
+                    ? '#15803d'
+                    : '#b45309';
+            const fillOpacity = highlighted || isSelected ? 1 : isCompleted ? 0.96 : 0.82;
+            const outline = isHint
+              ? '#7f1d1d'
+              : isActive
+                ? '#9a3412'
+                : isSelected
+                  ? '#0c4a6e'
+                  : isCompleted
+                    ? '#14532d'
+                    : '#78350f';
+
+            return (
+              <g
+                key={f.id}
+                onClick={() => tryPieceClick(f)}
+                className={clickableClass}
+              >
+                <polygon
+                  points={peakPts}
+                  fill="#ffffff"
+                  stroke="#ffffff"
+                  strokeWidth={highlighted ? 4.4 : isCompleted || isSelected ? 3.2 : 2.6}
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                  opacity={highlighted || isCompleted || isSelected ? 0.96 : 0.84}
+                />
+                <polygon
+                  points={peakPts}
+                  fill={fill}
+                  fillOpacity={fillOpacity}
+                  stroke={outline}
+                  strokeOpacity={highlighted || isCompleted || isSelected ? 1 : 0.88}
+                  strokeWidth={highlighted ? 1.5 : 1.0}
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+                <polygon
+                  points={snowPts}
+                  fill="#ffffff"
+                  fillOpacity={highlighted ? 0.94 : isCompleted ? 0.88 : 0.78}
+                  pointerEvents="none"
+                />
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r={Math.max(hw * 1.5, viewBox.w * 0.012)}
+                  fill="transparent"
+                />
+                {highlighted && (
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={Math.max(hw * 2.0, viewBox.w * 0.022)}
+                    fill="none"
+                    stroke={isHint ? '#dc2626' : '#ea580c'}
+                    strokeWidth={2.0}
+                    strokeDasharray="4 3"
+                    vectorEffect="non-scaling-stroke"
+                    pointerEvents="none"
+                  />
+                )}
+              </g>
+            );
+          }
+
+          if (cat === 'plain') {
+            if (!hasPath && pts.length < 3) return null;
+            const fill = isHint
+              ? '#f97316'
+              : isActive
+                ? '#84cc16'
+                : isSelected
+                  ? '#38bdf8'
+                  : isCompleted
+                    ? '#22c55e'
+                    : '#65a30d';
+            const fillOpacity = isHint
+              ? 0.52
+              : isActive
+                ? 0.58
+                : isSelected
+                  ? 0.44
+                  : isCompleted
+                    ? 0.5
+                    : 0.26;
+            const stroke = isHint
+              ? '#dc2626'
+              : isActive
+                ? '#ea580c'
+                : isSelected
+                  ? '#0284c7'
+                  : isCompleted
+                    ? '#15803d'
+                    : '#4d7c0f';
+            const strokeOpacity = highlighted || isSelected ? 1 : isCompleted ? 0.86 : 0.48;
+            const strokeWidth = isHint
+              ? 2.7
+              : isActive
+                ? 2.4
+                : isSelected
+                  ? 2.0
+                  : isCompleted
+                    ? 1.35
+                    : 0.9;
+            const showHalo = highlighted || isSelected;
+            const haloWidth = isHint ? 5.2 : isActive ? 4.8 : 4.0;
+
+            return (
+              <g
+                key={f.id}
+                onClick={() => tryPieceClick(f)}
+                className={clickableClass}
+              >
+                {showHalo &&
+                  (hasPath ? (
+                    <path
+                      d={f.path}
+                      fill="none"
+                      stroke="#ffffff"
+                      strokeOpacity={0.94}
+                      strokeWidth={haloWidth}
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      pointerEvents="none"
+                    />
+                  ) : (
+                    <polygon
+                      points={ptsStr}
+                      fill="none"
+                      stroke="#ffffff"
+                      strokeOpacity={0.94}
+                      strokeWidth={haloWidth}
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      pointerEvents="none"
+                    />
+                  ))}
+                {hasPath ? (
+                  <path
+                    d={f.path}
+                    fill={fill}
+                    fillOpacity={fillOpacity}
+                    fillRule="evenodd"
+                    stroke={stroke}
+                    strokeOpacity={strokeOpacity}
+                    strokeWidth={strokeWidth}
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ) : (
+                  <polygon
+                    points={ptsStr}
+                    fill={fill}
+                    fillOpacity={fillOpacity}
+                    stroke={stroke}
+                    strokeOpacity={strokeOpacity}
+                    strokeWidth={strokeWidth}
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                )}
+              </g>
+            );
+          }
+
+          if (cat === 'lake') {
+            if (!hasPath && pts.length < 3) return null;
+            const isSmallLake = rawSpan < viewBox.w * 0.04;
+            const isVerySmallLake = rawSpan < Math.max(12, viewBox.w * 0.025);
+            const showHalo = highlighted || isSelected || isVerySmallLake;
+            const haloWidth = isHint
+              ? isSmallLake
+                ? 8.4
+                : 7.4
+              : isActive
+                ? isSmallLake
+                  ? 7.8
+                  : 6.8
+                : isSelected
+                  ? isSmallLake
+                    ? 6.4
+                    : 5.6
+                  : isCompleted
+                    ? 4.0
+                    : 3.0;
+            const haloOpacity = highlighted
+              ? 0.95
+              : isSelected
+                ? 0.9
+                : isCompleted
+                  ? 0.78
+                  : 0.54;
+
+            const fill = isHint
+              ? '#38bdf8'
+              : isActive
+                ? '#0ea5e9'
+                : isSelected
+                  ? '#38bdf8'
+                  : '#0284c7';
+            const fillOpacity = isHint
+              ? 0.96
+              : isActive
+                ? 0.95
+                : isSelected
+                  ? 0.92
+                  : isCompleted
+                    ? 0.88
+                    : 0.66;
+            const stroke = isHint
+              ? '#dc2626'
+              : isActive
+                ? '#ea580c'
+                : isSelected
+                  ? '#0369a1'
+                  : isCompleted
+                    ? '#0c4a6e'
+                    : '#0369a1';
+            const strokeOpacity = highlighted || isSelected ? 1 : isCompleted ? 0.95 : 0.82;
+            const strokeWidth = isHint
+              ? isSmallLake
+                ? 5.0
+                : 4.4
+              : isActive
+                ? isSmallLake
+                  ? 4.6
+                  : 4.0
+                : isSelected
+                  ? 3.6
+                  : isCompleted
+                    ? 2.4
+                    : isVerySmallLake
+                      ? 2.0
+                      : 1.6;
+
+            return (
+              <g
+                key={f.id}
+                onClick={() => tryPieceClick(f)}
+                className={clickableClass}
+              >
+                {showHalo &&
+                  (hasPath ? (
+                    <path
+                      d={f.path}
+                      fill="none"
+                      stroke="#ffffff"
+                      strokeOpacity={haloOpacity}
+                      strokeWidth={haloWidth}
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      pointerEvents="none"
+                    />
+                  ) : (
+                    <polygon
+                      points={ptsStr}
+                      fill="none"
+                      stroke="#ffffff"
+                      strokeOpacity={haloOpacity}
+                      strokeWidth={haloWidth}
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      pointerEvents="none"
+                    />
+                  ))}
+                {hasPath ? (
+                  <path
+                    d={f.path}
+                    fill={fill}
+                    fillOpacity={fillOpacity}
+                    fillRule="evenodd"
+                    stroke={stroke}
+                    strokeOpacity={strokeOpacity}
+                    strokeWidth={strokeWidth}
+                    strokeLinejoin="round"
+                    paintOrder="stroke"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ) : (
+                  <polygon
+                    points={ptsStr}
+                    fill={fill}
+                    fillOpacity={fillOpacity}
+                    stroke={stroke}
+                    strokeOpacity={strokeOpacity}
+                    strokeWidth={strokeWidth}
+                    strokeLinejoin="round"
+                    paintOrder="stroke"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                )}
+                {isVerySmallLake && (
+                  <circle
+                    cx={f.center[0]}
+                    cy={f.center[1]}
+                    r={Math.max(4.5, viewBox.w * 0.014)}
+                    fill="transparent"
+                  />
+                )}
+                {highlighted && isSmallLake && (
+                  <circle
+                    cx={f.center[0]}
+                    cy={f.center[1]}
+                    r={Math.max(
+                      rawSpan * 0.8 + viewBox.w * 0.008,
+                      Math.max(4.5, viewBox.w * 0.02),
+                    )}
+                    fill="none"
+                    stroke={isHint ? '#dc2626' : '#ea580c'}
+                    strokeWidth={2.0}
+                    strokeDasharray="4 3"
+                    vectorEffect="non-scaling-stroke"
+                    pointerEvents="none"
+                  />
+                )}
+              </g>
+            );
+          }
+
+          if (cat === 'river') {
+            if (!hasPath && pts.length < 2) return null;
+            const showCasing = highlighted || isSelected || isCompleted;
+            const casingWidth = isHint ? 6.6 : isActive ? 6.0 : isSelected ? 5.2 : 4.2;
+            const casingOpacity = highlighted ? 0.95 : isSelected ? 0.92 : 0.82;
+            const stroke = isHint
+              ? '#dc2626'
+              : isActive
+                ? '#ea580c'
+                : isSelected
+                  ? '#0284c7'
+                  : isCompleted
+                    ? '#1d4ed8'
+                    : '#2563eb';
+            const strokeOpacity = highlighted || isSelected ? 1 : isCompleted ? 0.94 : 0.42;
+            const strokeWidth = isHint
+              ? 3.9
+              : isActive
+                ? 3.6
+                : isSelected
+                  ? 3.1
+                  : isCompleted
+                    ? 2.4
+                    : 1.8;
+
+            return (
+              <g
+                key={f.id}
+                onClick={() => tryPieceClick(f)}
+                className={clickableClass}
+              >
+                {showCasing &&
+                  (hasPath ? (
+                    <path
+                      d={f.path}
+                      fill="none"
+                      stroke="#ffffff"
+                      strokeOpacity={casingOpacity}
+                      strokeWidth={casingWidth}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      pointerEvents="none"
+                    />
+                  ) : (
+                    <polyline
+                      points={ptsStr}
+                      fill="none"
+                      stroke="#ffffff"
+                      strokeOpacity={casingOpacity}
+                      strokeWidth={casingWidth}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      pointerEvents="none"
+                    />
+                  ))}
+                {hasPath ? (
+                  <path
+                    d={f.path}
+                    fill="none"
+                    stroke={stroke}
+                    strokeOpacity={strokeOpacity}
+                    strokeWidth={strokeWidth}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ) : (
+                  <polyline
+                    points={ptsStr}
+                    fill="none"
+                    stroke={stroke}
+                    strokeOpacity={strokeOpacity}
+                    strokeWidth={strokeWidth}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                )}
+                {hasPath ? (
+                  <path
+                    d={f.path}
+                    fill="none"
+                    stroke="transparent"
+                    strokeWidth={10}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ) : (
+                  <polyline
+                    points={ptsStr}
+                    fill="none"
+                    stroke="transparent"
+                    strokeWidth={10}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                )}
+              </g>
+            );
+          }
+
+          // mountains (山脈・山地・高地)
+          if (!hasPath && pts.length < 2) return null;
+          const zoneFill = isSelected ? '#0284c7' : '#9a3412';
+          const zoneFillOpacity = isHint
+            ? 0.48
+            : isActive
+              ? 0.46
+              : isSelected
+                ? 0.28
+                : isCompleted
+                  ? 0.34
+                  : 0.18;
+          const zoneStroke = isHint
+            ? '#dc2626'
+            : isActive
+              ? '#ea580c'
+              : isSelected
+                ? '#0284c7'
+                : isCompleted
+                  ? '#7c2d12'
+                  : '#9a3412';
+          const zoneStrokeOpacity = highlighted || isSelected ? 0.9 : isCompleted ? 0.55 : 0.28;
+          const zoneStrokeWidth = isHint
+            ? 2.0
+            : isActive
+              ? 1.7
+              : isSelected
+                ? 1.6
+                : isCompleted
+                  ? 1.1
+                  : 0.8;
+
+          const ridgeStroke = isHint
+            ? '#dc2626'
+            : isActive
+              ? '#ea580c'
+              : isSelected
+                ? '#0284c7'
+                : '#7c2d12';
+          const ridgeOpacity = highlighted || isSelected ? 1 : isCompleted ? 0.9 : 0.56;
+          const ridgeWidth = isHint
+            ? 3.7
+            : isActive
+              ? 3.4
+              : isSelected
+                ? 3.0
+                : isCompleted
+                  ? 2.6
+                  : 2.2;
+          const showRidgeCasing = highlighted || isSelected;
 
           return (
             <g
               key={f.id}
-              opacity={opacity}
               onClick={() => tryPieceClick(f)}
-              className={onPieceClick ? 'map-piece-clickable' : undefined}
+              className={clickableClass}
             >
-              {f.geometryType === 'polygon_pts' ? (
-                <polygon
-                  points={ptsStr}
-                  fill={highlighted ? (cat === '湖' ? '#38bdf8' : '#f97316') : color}
-                  fillOpacity={highlighted ? 0.72 : 0.48}
-                  stroke={activeStroke}
-                  strokeWidth={highlighted ? 2.4 : 1.1}
-                  vectorEffect="non-scaling-stroke"
-                />
-              ) : (
-                <polyline
-                  points={ptsStr}
-                  fill="none"
-                  stroke={activeStroke}
-                  strokeWidth={
-                    cat === '河川'
-                      ? highlighted
-                        ? 4.2
-                        : 2.0
-                      : highlighted
-                        ? 6.5
-                        : 3.4
-                  }
-                  strokeLinecap="round"
+              {hasPath && (
+                <path
+                  d={f.path}
+                  fill={zoneFill}
+                  fillOpacity={zoneFillOpacity}
+                  fillRule="evenodd"
+                  stroke={zoneStroke}
+                  strokeOpacity={zoneStrokeOpacity}
+                  strokeWidth={zoneStrokeWidth}
                   strokeLinejoin="round"
-                  strokeDasharray={cat === '山脈・山地・高地' ? '4 2' : undefined}
                   vectorEffect="non-scaling-stroke"
                 />
               )}
-              {highlighted && (
-                <circle
-                  cx={f.center[0]}
-                  cy={f.center[1]}
-                  r={Math.max(8, viewBox.w * 0.025)}
+              {pts.length >= 2 && showRidgeCasing && (
+                <polyline
+                  points={ptsStr}
                   fill="none"
-                  stroke="#dc2626"
-                  strokeWidth={2}
-                  strokeDasharray="4 3"
+                  stroke="#ffffff"
+                  strokeOpacity={0.92}
+                  strokeWidth={isHint ? 6.2 : isActive ? 5.8 : 4.8}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                  pointerEvents="none"
+                />
+              )}
+              {pts.length >= 2 && (
+                <polyline
+                  points={ptsStr}
+                  fill="none"
+                  stroke={ridgeStroke}
+                  strokeOpacity={ridgeOpacity}
+                  strokeWidth={ridgeWidth}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeDasharray={highlighted || isCompleted ? '7 3' : '6 3'}
+                  vectorEffect="non-scaling-stroke"
+                />
+              )}
+              {pts.length >= 2 && (
+                <polyline
+                  points={ptsStr}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={10}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
                 />
               )}
@@ -634,9 +1236,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   return (
     <svg
       ref={mergedSvgRef}
-      viewBox={viewBoxString}
       preserveAspectRatio="xMidYMid meet"
-      className={`map-canvas-svg ${isPanning ? 'is-panning' : ''}`}
+      className="map-canvas-svg"
       style={{
         background: config.silhouette ? '#dcebfa' : '#cfe5f7',
         touchAction: 'none',
@@ -775,11 +1376,15 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         }
         const label =
           swapCapitalLabel && p.adminAreaLabel ? p.adminAreaLabel : p.name;
+        const labelY =
+          isTerrainMode && resolveGeoCategory(p) === 'mountain'
+            ? p.center[1] + getMountainPeakHalfWidth(viewBox.w) * 0.55 + labelFontSize * 0.65
+            : p.center[1];
         return (
           <text
             key={`lbl-${p.id}`}
             x={p.center[0]}
-            y={p.center[1]}
+            y={labelY}
             textAnchor="middle"
             dominantBaseline="central"
             fontSize={labelFontSize}
@@ -797,3 +1402,5 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     </svg>
   );
 };
+
+export const MapCanvas = React.memo(MapCanvasInner);

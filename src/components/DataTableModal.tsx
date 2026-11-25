@@ -11,7 +11,6 @@ import {
   groupByTiiki,
   sortPiecesByArea,
   sortPiecesByCode,
-  sortPiecesByElection,
   sortPiecesByKana,
   sortPiecesByPopulation,
 } from '../services/dataAnalyzer';
@@ -33,7 +32,6 @@ const SORT_TABS: { key: SortTabKey; label: string }[] = [
   { key: 'kanzi', label: '漢字' },
   { key: 'hirakana', label: 'ひらカナ' },
   { key: 'moziCount', label: '文字数' },
-  { key: 'election', label: '選挙投票率' },
   { key: 'similarName', label: '似た名前' },
   { key: 'matiTyou', label: 'まち・ちょう' },
   { key: 'muraSon', label: 'むら・そん' },
@@ -81,8 +79,6 @@ export const DataTableModal: React.FC<DataTableModalProps> = ({
         return sortPiecesByPopulation(scopedPieces);
       case 'area':
         return sortPiecesByArea(scopedPieces);
-      case 'election':
-        return sortPiecesByElection(scopedPieces);
       default:
         return sortPiecesByCode(scopedPieces);
     }
@@ -154,7 +150,7 @@ export const DataTableModal: React.FC<DataTableModalProps> = ({
                 {p.areaKm2 > 0 ? p.areaKm2.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '-'}
               </td>
               <td>
-                {p.electionTurnout != null ? `${p.electionTurnout.toFixed(2)}%` : p.countyLabel || p.adminAreaLabel || '-'}
+                {p.countyLabel || p.adminAreaLabel || '-'}
               </td>
             </tr>
           ))}
@@ -203,7 +199,7 @@ export const DataTableModal: React.FC<DataTableModalProps> = ({
           </button>
         </div>
 
-        {/* 12 Sort Tabs */}
+        {/* 11 Sort Tabs */}
         <div className="data-tabs-bar">
           {SORT_TABS.map((t) => (
             <button
@@ -298,8 +294,7 @@ export const DataTableModal: React.FC<DataTableModalProps> = ({
               {(sortTab === 'code' ||
                 sortTab === 'kana50' ||
                 sortTab === 'population' ||
-                sortTab === 'area' ||
-                sortTab === 'election') &&
+                sortTab === 'area') &&
                 renderPieceTable(sortedFlat, sortTab !== 'code')}
 
               {sortTab === 'kanzi' &&

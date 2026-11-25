@@ -35,7 +35,6 @@ export const DEFAULT_CONFIG: ConfigState = {
   nameOnDrag: true,
   nameOnFix: true,
   dragInertia: 0.65,
-  keypadMode: '50on',
 };
 
 const DEFAULT_TAGS: MapTag[] = [

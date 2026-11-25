@@ -103,7 +103,7 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
     animateToBBox,
     zoomByFactor,
     panByScreenDelta,
-    startInertia,
+    finishPan,
   } = useMapViewport({
     initialBBox,
     dragInertia: config.dragInertia,
@@ -288,9 +288,9 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
           forceShowNames={showNames}
           showCapitalMarks={showCapitalMarks}
           swapCapitalLabel={swapCapitalLabel}
-          onPieceClick={(p) => setSelectedPiece(p)}
+          onPieceClick={setSelectedPiece}
           onPanBy={panByScreenDelta}
-          onStartInertia={startInertia}
+          onFinishPan={finishPan}
           onZoomByFactor={zoomByFactor}
         />
       )}
@@ -340,9 +340,6 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
               <span>
                 {area.id === '00_japan' ? '県庁:' : '区分:'} {selectedPiece.adminAreaLabel}
               </span>
-            )}
-            {selectedPiece.electionTurnout != null && (
-              <span>投票率: {selectedPiece.electionTurnout.toFixed(2)}%</span>
             )}
           </div>
 

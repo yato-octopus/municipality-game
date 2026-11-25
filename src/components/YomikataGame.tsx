@@ -1,15 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { normalizeKana } from '../services/mapDataLoader';
-import { cycleKanaModifier } from '../utils/formatters';
 import type { ConfigState, MapPieceItem } from '../types/game';
-import { KeypadJp } from './KeypadJp';
 
 interface YomikataGameProps {
   activePiece: MapPieceItem;
   isCapitalYomikata: boolean;
   config: ConfigState;
-  onConfigChange: (next: ConfigState) => void;
   onFocusPiece: (piece: MapPieceItem) => void;
+  onHelp: () => void;
   onAnswerResult: (correct: boolean) => void;
   onMarkMistake: () => void;
 }
@@ -18,77 +16,77 @@ export const YomikataGame: React.FC<YomikataGameProps> = ({
   activePiece,
   isCapitalYomikata,
   config,
-  onConfigChange,
   onFocusPiece,
+  onHelp,
   onAnswerResult,
   onMarkMistake,
 }) => {
   const [typed, setTyped] = useState('');
   const [feedback, setFeedback] = useState<'ok' | 'ng' | null>(null);
+  const [revealed, setRevealed] = useState(false);
+
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const isComposingRef = useRef(false);
 
   const expected = normalizeKana(activePiece.answerRuby ?? activePiece.ruby);
 
-  const commitTyped = (nextVal: string) => {
-    setTyped(nextVal);
-    if (normalizeKana(nextVal) === expected) {
-      setFeedback('ok');
-      onAnswerResult(true);
-    } else {
-      setFeedback(null);
+  // Auto-focus input immediately on every question so user can type + Enter continuously
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const triggerCorrect = () => {
+    if (feedback === 'ok') return;
+    setFeedback('ok');
+    onAnswerResult(true);
+  };
+
+  const judgeValue = (rawVal: string) => {
+    if (feedback === 'ok') return;
+    if (revealed) {
+      triggerCorrect();
+      return;
     }
-  };
-
-  const handleInputChar = (ch: string) => {
-    if (feedback === 'ok') return;
-    if (typed.length >= expected.length + 2) return;
-    commitTyped(typed + ch);
-  };
-
-  const handleMutateLast = () => {
-    if (feedback === 'ok' || typed.length === 0) return;
-    const head = typed.slice(0, -1);
-    const last = typed.slice(-1);
-    commitTyped(head + cycleKanaModifier(last));
-  };
-
-  const handleBackspace = () => {
-    if (feedback === 'ok' || typed.length === 0) return;
-    setTyped(typed.slice(0, -1));
-    setFeedback(null);
-  };
-
-  const handleSubmit = () => {
-    if (feedback === 'ok') return;
-    if (normalizeKana(typed) === expected) {
-      setFeedback('ok');
-      onAnswerResult(true);
+    const normalized = normalizeKana(rawVal);
+    if (!normalized) return;
+    if (normalized === expected) {
+      triggerCorrect();
     } else {
       setFeedback('ng');
       onAnswerResult(false);
+      inputRef.current?.select();
     }
   };
 
-  const handleSkipWithAnswer = () => {
-    setTyped(expected);
-    setFeedback('ng');
-    onMarkMistake();
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    // Wait for Japanese IME composition confirmation before judging
+    if (isComposingRef.current || e.nativeEvent.isComposing || e.keyCode === 229) {
+      return;
+    }
+    e.preventDefault();
+    judgeValue(e.currentTarget.value);
   };
 
-  // Support optional hardware keyboard hiragana typing
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === 'Backspace') {
-        e.preventDefault();
-        handleBackspace();
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        handleSubmit();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  });
+  const handleCompositionEnd = (e: React.CompositionEvent<HTMLInputElement>) => {
+    isComposingRef.current = false;
+    const val = e.currentTarget.value;
+    setTyped(val);
+    // If IME Enter confirmation already matches the exact answer, advance right away!
+    if (feedback !== 'ok' && normalizeKana(val) === expected) {
+      triggerCorrect();
+    }
+  };
+
+  const handleRevealAnswer = () => {
+    if (!revealed) {
+      setRevealed(true);
+      onMarkMistake();
+    }
+    setTyped(expected);
+    setFeedback(null);
+    inputRef.current?.focus();
+  };
 
   return (
     <div className="bottom-play-panel yomikata-panel">
@@ -113,48 +111,81 @@ export const YomikataGame: React.FC<YomikataGameProps> = ({
               </strong>
             </>
           )}
+          <span className="yomi-length-pill">{expected.length}文字</span>
         </div>
 
-        <div className="yomi-answer-display">
-          <div className="yomi-typed-box">
-            <span className="yomi-typed-text">{typed || 'ひらがなで入力'}</span>
-            <span className="yomi-char-count">
-              {typed.length} / {expected.length}文字
-            </span>
-          </div>
-          <div className="yomi-quick-btns">
-            <button
-              type="button"
-              className="btn-secondary btn-xs"
-              onClick={() => onFocusPiece(activePiece)}
-            >
-              📍 場所へフォーカス
-            </button>
-            {!config.disableHelpButton && (
+        <div className="yomi-quick-btns">
+          <button
+            type="button"
+            className="btn-secondary btn-xs"
+            onClick={() => {
+              onFocusPiece(activePiece);
+              inputRef.current?.focus();
+            }}
+          >
+            📍 場所へフォーカス
+          </button>
+          {!config.disableHelpButton && (
+            <>
+              <button
+                type="button"
+                className="btn-warning btn-xs"
+                onClick={() => {
+                  onHelp();
+                  inputRef.current?.focus();
+                }}
+              >
+                ？ヒント
+              </button>
               <button
                 type="button"
                 className="btn-ghost btn-xs"
-                onClick={handleSkipWithAnswer}
+                onClick={handleRevealAnswer}
               >
                 答えを見る
               </button>
-            )}
-          </div>
+            </>
+          )}
         </div>
       </div>
 
-      <KeypadJp
-        mode={config.keypadMode}
-        onModeChange={(keypadMode) => onConfigChange({ ...config, keypadMode })}
-        onInputChar={handleInputChar}
-        onMutateLastChar={handleMutateLast}
-        onBackspace={handleBackspace}
-        onClear={() => {
-          setTyped('');
-          setFeedback(null);
-        }}
-        onSubmit={handleSubmit}
-      />
+      {revealed && (
+        <div className="yomi-reveal-banner">
+          答え：<strong>{expected}</strong>（Enter キーで次の問題へ進めます）
+        </div>
+      )}
+
+      <div className="yomi-input-row">
+        <input
+          ref={inputRef}
+          type="text"
+          className={`yomi-text-input ${feedback === 'ok' ? 'is-ok' : feedback === 'ng' ? 'is-ng' : ''}`}
+          value={typed}
+          onChange={(e) => {
+            setTyped(e.target.value);
+            if (feedback === 'ng') setFeedback(null);
+          }}
+          onCompositionStart={() => {
+            isComposingRef.current = true;
+          }}
+          onCompositionEnd={handleCompositionEnd}
+          onKeyDown={handleKeyDown}
+          placeholder="ひらがなで入力して Enter（カタカナ可）"
+          autoFocus
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          aria-label="読み方の回答入力"
+        />
+        <button
+          type="button"
+          className="btn-primary yomi-submit-btn"
+          onClick={() => judgeValue(typed)}
+        >
+          {revealed ? '次へ (Enter)' : '回答 (Enter)'}
+        </button>
+      </div>
 
       {feedback && (
         <div className={`judge-badge ${feedback === 'ok' ? 'is-ok' : 'is-ng'}`}>

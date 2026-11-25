@@ -50,10 +50,6 @@ export function sortPiecesByArea(pieces: MapPieceItem[]): MapPieceItem[] {
   return [...pieces].sort((a, b) => b.areaKm2 - a.areaKm2);
 }
 
-export function sortPiecesByElection(pieces: MapPieceItem[]): MapPieceItem[] {
-  return [...pieces].sort((a, b) => (b.electionTurnout ?? -1) - (a.electionTurnout ?? -1));
-}
-
 export function analyzeKanzi(pieces: MapPieceItem[]): SubTableGroup[] {
   const map = new Map<string, MapPieceItem[]>();
   for (const piece of pieces) {

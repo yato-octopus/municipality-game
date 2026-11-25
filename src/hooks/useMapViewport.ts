@@ -14,6 +14,10 @@ interface UseMapViewportOptions {
   fpsMode: 'high' | 'low';
 }
 
+function formatViewBox(vb: ViewBoxRect): string {
+  return `${vb.x.toFixed(3)} ${vb.y.toFixed(3)} ${vb.w.toFixed(3)} ${vb.h.toFixed(3)}`;
+}
+
 function bboxToViewBox(bbox: BBox, aspect: number): ViewBoxRect {
   const bw = Math.max(4, bbox[2] - bbox[0]);
   const bh = Math.max(4, bbox[3] - bbox[1]);
@@ -51,20 +55,37 @@ export function useMapViewport({
   const [containerAspect, setContainerAspect] = useState(1.4);
   const baseBBoxRef = useRef<BBox>(initialBBox);
 
-  const svgRef = useCallback((node: SVGSVGElement | null) => {
-    svgNodeRef.current = node;
-    setSvgEl(node);
-  }, []);
-
   const [viewBox, setViewBox] = useState<ViewBoxRect>(() =>
     bboxToViewBox(initialBBox, 1.4),
   );
+  // Authoritative live viewBox (updated directly during 60/120fps drag & inertia without React re-renders)
   const viewBoxRef = useRef<ViewBoxRect>(viewBox);
-  useEffect(() => {
-    viewBoxRef.current = viewBox;
-  }, [viewBox]);
 
   const animRafRef = useRef<number | null>(null);
+
+  const applyDomViewBox = useCallback((vb: ViewBoxRect) => {
+    viewBoxRef.current = vb;
+    const el = svgNodeRef.current;
+    if (el) {
+      el.setAttribute('viewBox', formatViewBox(vb));
+    }
+  }, []);
+
+  const commitViewBox = useCallback(
+    (vb: ViewBoxRect) => {
+      applyDomViewBox(vb);
+      setViewBox(vb);
+    },
+    [applyDomViewBox],
+  );
+
+  const svgRef = useCallback((node: SVGSVGElement | null) => {
+    svgNodeRef.current = node;
+    if (node) {
+      node.setAttribute('viewBox', formatViewBox(viewBoxRef.current));
+    }
+    setSvgEl(node);
+  }, []);
 
   const stopAnimations = useCallback(() => {
     if (animRafRef.current != null) {
@@ -73,7 +94,7 @@ export function useMapViewport({
     }
   }, []);
 
-  // Attach ResizeObserver whenever the <svg> element actually mounts (even after async map load)
+  // Attach ResizeObserver whenever the <svg> element mounts (even after async map load)
   useEffect(() => {
     if (!svgEl) return;
     let prevW = 0;
@@ -84,15 +105,13 @@ export function useMapViewport({
       const nextAspect = r.width / r.height;
       setContainerAspect(nextAspect);
       if (prevW === 0) {
-        // First real measurement after mount: align viewBox aspect cleanly to the real container
-        setViewBox(bboxToViewBox(baseBBoxRef.current, nextAspect));
+        commitViewBox(bboxToViewBox(baseBBoxRef.current, nextAspect));
       } else if (Math.abs(r.width - prevW) > 1 || Math.abs(r.height - prevH) > 1) {
-        setViewBox((cur) => {
-          const cx = cur.x + cur.w / 2;
-          const cy = cur.y + cur.h / 2;
-          const newH = cur.w / nextAspect;
-          return { x: cx - cur.w / 2, y: cy - newH / 2, w: cur.w, h: newH };
-        });
+        const cur = viewBoxRef.current;
+        const cx = cur.x + cur.w / 2;
+        const cy = cur.y + cur.h / 2;
+        const newH = cur.w / nextAspect;
+        commitViewBox({ x: cx - cur.w / 2, y: cy - newH / 2, w: cur.w, h: newH });
       }
       prevW = r.width;
       prevH = r.height;
@@ -101,7 +120,7 @@ export function useMapViewport({
     const ro = new ResizeObserver(updateSize);
     ro.observe(svgEl);
     return () => ro.disconnect();
-  }, [svgEl]);
+  }, [svgEl, commitViewBox]);
 
   const fitBBox = useCallback(
     (bbox: BBox) => {
@@ -110,9 +129,9 @@ export function useMapViewport({
       const el = svgNodeRef.current;
       const r = el?.getBoundingClientRect();
       const aspect = r && r.width > 10 && r.height > 10 ? r.width / r.height : containerAspect;
-      setViewBox(bboxToViewBox(bbox, aspect));
+      commitViewBox(bboxToViewBox(bbox, aspect));
     },
-    [containerAspect, stopAnimations],
+    [containerAspect, stopAnimations, commitViewBox],
   );
 
   // Refit smoothly when session's initialBBox changes
@@ -134,21 +153,23 @@ export function useMapViewport({
       const step = (now: number) => {
         const p = Math.min(1, (now - t0) / durationMs);
         const ease = 1 - (1 - p) * (1 - p) * (1 - p);
-        setViewBox({
+        const cur: ViewBoxRect = {
           x: start.x + (goal.x - start.x) * ease,
           y: start.y + (goal.y - start.y) * ease,
           w: start.w + (goal.w - start.w) * ease,
           h: start.h + (goal.h - start.h) * ease,
-        });
+        };
         if (p < 1) {
+          applyDomViewBox(cur);
           animRafRef.current = requestAnimationFrame(step);
         } else {
           animRafRef.current = null;
+          commitViewBox(goal);
         }
       };
       animRafRef.current = requestAnimationFrame(step);
     },
-    [containerAspect, stopAnimations],
+    [containerAspect, stopAnimations, applyDomViewBox, commitViewBox],
   );
 
   /** Zoom ratio relative to initial bbox width (>= 1 means zoomed in) */
@@ -167,35 +188,34 @@ export function useMapViewport({
       const minW = initRect.w / 48;
       const maxW = initRect.w / 0.65;
 
-      setViewBox((prev) => {
-        const nextW = Math.max(minW, Math.min(maxW, prev.w / factor));
-        const actualFactor = prev.w / nextW;
-        const nextH = prev.h / actualFactor;
+      const prev = viewBoxRef.current;
+      const nextW = Math.max(minW, Math.min(maxW, prev.w / factor));
+      const actualFactor = prev.w / nextW;
+      const nextH = prev.h / actualFactor;
 
-        let anchorSvgX = prev.x + prev.w / 2;
-        let anchorSvgY = prev.y + prev.h / 2;
-        let fracX = 0.5;
-        let fracY = 0.5;
+      let anchorSvgX = prev.x + prev.w / 2;
+      let anchorSvgY = prev.y + prev.h / 2;
+      let fracX = 0.5;
+      let fracY = 0.5;
 
-        if (el && r && clientX != null && clientY != null) {
-          const m = computeSvgMetrics(el, prev);
-          if (m) {
-            anchorSvgX = prev.x + (clientX - m.rect.left - m.padX) / m.scale;
-            anchorSvgY = prev.y + (clientY - m.rect.top - m.padY) / m.scale;
-            fracX = Math.max(0, Math.min(1, (clientX - m.rect.left) / m.rect.width));
-            fracY = Math.max(0, Math.min(1, (clientY - m.rect.top) / m.rect.height));
-          }
+      if (el && r && clientX != null && clientY != null) {
+        const m = computeSvgMetrics(el, prev);
+        if (m) {
+          anchorSvgX = prev.x + (clientX - m.rect.left - m.padX) / m.scale;
+          anchorSvgY = prev.y + (clientY - m.rect.top - m.padY) / m.scale;
+          fracX = Math.max(0, Math.min(1, (clientX - m.rect.left) / m.rect.width));
+          fracY = Math.max(0, Math.min(1, (clientY - m.rect.top) / m.rect.height));
         }
+      }
 
-        return {
-          x: anchorSvgX - nextW * fracX,
-          y: anchorSvgY - nextH * fracY,
-          w: nextW,
-          h: nextH,
-        };
+      commitViewBox({
+        x: anchorSvgX - nextW * fracX,
+        y: anchorSvgY - nextH * fracY,
+        w: nextW,
+        h: nextH,
       });
     },
-    [containerAspect, stopAnimations],
+    [containerAspect, stopAnimations, commitViewBox],
   );
 
   const setZoomAtPoint = useCallback(
@@ -209,91 +229,107 @@ export function useMapViewport({
       const newW = initRect.w / clampedZoom;
       const newH = initRect.h / clampedZoom;
 
-      setViewBox((cur) => {
-        let anchorSvgX = cur.x + cur.w / 2;
-        let anchorSvgY = cur.y + cur.h / 2;
-        let fracX = 0.5;
-        let fracY = 0.5;
+      const cur = viewBoxRef.current;
+      let anchorSvgX = cur.x + cur.w / 2;
+      let anchorSvgY = cur.y + cur.h / 2;
+      let fracX = 0.5;
+      let fracY = 0.5;
 
-        if (el && r && clientX != null && clientY != null) {
-          const m = computeSvgMetrics(el, cur);
-          if (m) {
-            anchorSvgX = cur.x + (clientX - m.rect.left - m.padX) / m.scale;
-            anchorSvgY = cur.y + (clientY - m.rect.top - m.padY) / m.scale;
-            fracX = Math.max(0, Math.min(1, (clientX - m.rect.left) / m.rect.width));
-            fracY = Math.max(0, Math.min(1, (clientY - m.rect.top) / m.rect.height));
-          }
+      if (el && r && clientX != null && clientY != null) {
+        const m = computeSvgMetrics(el, cur);
+        if (m) {
+          anchorSvgX = cur.x + (clientX - m.rect.left - m.padX) / m.scale;
+          anchorSvgY = cur.y + (clientY - m.rect.top - m.padY) / m.scale;
+          fracX = Math.max(0, Math.min(1, (clientX - m.rect.left) / m.rect.width));
+          fracY = Math.max(0, Math.min(1, (clientY - m.rect.top) / m.rect.height));
         }
+      }
 
-        return {
-          x: anchorSvgX - newW * fracX,
-          y: anchorSvgY - newH * fracY,
-          w: newW,
-          h: newH,
-        };
+      commitViewBox({
+        x: anchorSvgX - newW * fracX,
+        y: anchorSvgY - newH * fracY,
+        w: newW,
+        h: newH,
       });
     },
-    [containerAspect, stopAnimations],
+    [containerAspect, stopAnimations, commitViewBox],
   );
 
+  /** Direct DOM viewBox pan during drag — zero React re-renders per pixel */
   const panByScreenDelta = useCallback(
     (dxScreen: number, dyScreen: number) => {
       stopAnimations();
       const el = svgNodeRef.current;
       if (!el) return;
-      setViewBox((prev) => {
-        const m = computeSvgMetrics(el, prev);
-        if (!m || m.scale <= 0) return prev;
-        return {
-          ...prev,
-          x: prev.x - dxScreen / m.scale,
-          y: prev.y - dyScreen / m.scale,
-        };
+      const prev = viewBoxRef.current;
+      const m = computeSvgMetrics(el, prev);
+      if (!m || m.scale <= 0) return;
+      applyDomViewBox({
+        ...prev,
+        x: prev.x - dxScreen / m.scale,
+        y: prev.y - dyScreen / m.scale,
       });
     },
-    [stopAnimations],
+    [stopAnimations, applyDomViewBox],
   );
 
-  const startInertia = useCallback(
+  /** Smooth frame-rate-independent inertia on release, committing React state only once settled */
+  const finishPan = useCallback(
     (vxScreenPerMs: number, vyScreenPerMs: number) => {
       stopAnimations();
-      if (dragInertia <= 0.02) return;
       const el = svgNodeRef.current;
-      if (!el) return;
+      const speed = Math.hypot(vxScreenPerMs, vyScreenPerMs);
+      if (!el || dragInertia <= 0.02 || speed < 0.06) {
+        setViewBox({ ...viewBoxRef.current });
+        return;
+      }
 
-      let vx = vxScreenPerMs * dragInertia;
-      let vy = vyScreenPerMs * dragInertia;
+      // Cap extreme flick spikes and apply continuous exponential decay
+      const maxSpeed = 3.2;
+      const scaleClamp = speed > maxSpeed ? maxSpeed / speed : 1;
+      let vx = vxScreenPerMs * scaleClamp;
+      let vy = vyScreenPerMs * scaleClamp;
+      const tauMs = 95 + dragInertia * 175;
       let last = performance.now();
       const minInterval = fpsMode === 'low' ? 30 : 0;
 
       const tick = (now: number) => {
-        const dt = now - last;
-        if (dt < minInterval) {
+        const rawDt = now - last;
+        if (rawDt < minInterval) {
           animRafRef.current = requestAnimationFrame(tick);
           return;
         }
         last = now;
-        const decay = Math.pow(0.88, Math.max(0.5, dt / 16));
+        // Clamp dt so a single OS frame drop never causes a jump at the end of glide
+        const dt = Math.min(32, Math.max(1, rawDt));
+        const decay = Math.exp(-dt / tauMs);
+        // Integrate exact analytic distance over [0, dt] for velvety smooth deceleration
+        const factor = tauMs * (1 - decay);
+        const dxScreen = vx * factor;
+        const dyScreen = vy * factor;
         vx *= decay;
         vy *= decay;
-        if (Math.hypot(vx, vy) < 0.015) {
+
+        const prev = viewBoxRef.current;
+        const m = computeSvgMetrics(el, prev);
+        if (m && m.scale > 0) {
+          applyDomViewBox({
+            ...prev,
+            x: prev.x - dxScreen / m.scale,
+            y: prev.y - dyScreen / m.scale,
+          });
+        }
+
+        if (Math.hypot(vx, vy) < 0.005) {
           animRafRef.current = null;
+          setViewBox({ ...viewBoxRef.current });
           return;
         }
-        setViewBox((prev) => {
-          const m = computeSvgMetrics(el, prev);
-          if (!m || m.scale <= 0) return prev;
-          return {
-            ...prev,
-            x: prev.x - (vx * dt) / m.scale,
-            y: prev.y - (vy * dt) / m.scale,
-          };
-        });
         animRafRef.current = requestAnimationFrame(tick);
       };
       animRafRef.current = requestAnimationFrame(tick);
     },
-    [dragInertia, fpsMode, stopAnimations],
+    [dragInertia, fpsMode, stopAnimations, applyDomViewBox],
   );
 
   const clientToSvg = useCallback((clientX: number, clientY: number): [number, number] => {
@@ -320,14 +356,14 @@ export function useMapViewport({
   return {
     svgRef,
     viewBox,
-    viewBoxString: `${viewBox.x.toFixed(2)} ${viewBox.y.toFixed(2)} ${viewBox.w.toFixed(2)} ${viewBox.h.toFixed(2)}`,
+    viewBoxString: formatViewBox(viewBox),
     zoomRatio,
     fitBBox,
     animateToBBox,
     zoomByFactor,
     setZoomAtPoint,
     panByScreenDelta,
-    startInertia,
+    finishPan,
     clientToSvg,
     svgScalePxPerUnit,
   };
