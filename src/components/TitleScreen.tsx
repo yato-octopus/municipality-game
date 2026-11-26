@@ -200,8 +200,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [confirmDismissAutoSave, setConfirmDismissAutoSave] = useState(false);
   const [otherTab, setOtherTab] = useState<
-    'changelog' | 'sound' | 'quality' | 'autosave' | 'fps' | 'source' | 'credit'
-  >('changelog');
+    'settings' | 'changelog' | 'source' | 'credit'
+  >('settings');
 
   // GameInfo quick DataTable preview
   const [dataModalPieces, setDataModalPieces] = useState<{
@@ -975,7 +975,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 }}
               >
                 <span className="menu-btn-title">設定・更新履歴・出典</span>
-                <span className="menu-btn-sub">詳細設定 / 更新履歴 / AutoSave / FPS</span>
+                <span className="menu-btn-sub">テーマ / 地図・操作設定 / 更新履歴 / 出典</span>
               </button>
             </div>
           </nav>
@@ -1915,11 +1915,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             <div className="other-tabs-bar">
               {(
                 [
+                  ['settings', '基本設定'],
                   ['changelog', '更新履歴'],
-                  ['sound', 'サウンド'],
-                  ['quality', '描画負荷'],
-                  ['autosave', 'オートセーブ'],
-                  ['fps', 'FPS設定'],
                   ['source', '出典'],
                   ['credit', 'クレジット'],
                 ] as const
@@ -1936,41 +1933,208 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </div>
 
             <div className="modal-body other-body">
-              <div className="other-settings-banner">
-                <span>地図スタイル・クイズ配置・ヒント表示などの詳細設定</span>
-                <button
-                  type="button"
-                  className="btn-primary btn-xs"
-                  onClick={() => {
-                    setShowOtherModal(false);
-                    setShowSettingsModal(true);
-                  }}
-                >
-                  ⚙ 詳細設定を開く
-                </button>
-              </div>
+              {otherTab === 'settings' && (
+                <div className="other-settings-stack">
+                  <div className="other-settings-banner">
+                    <span>パズル・読み方・境界線などの全項目を設定</span>
+                    <button
+                      type="button"
+                      className="btn-primary btn-xs"
+                      onClick={() => {
+                        setShowOtherModal(false);
+                        setShowSettingsModal(true);
+                      }}
+                    >
+                      ⚙ 詳細設定をすべて開く
+                    </button>
+                  </div>
 
-              <div className="other-theme-row">
-                <span>外観テーマ</span>
-                <div className="segmented-control" role="group" aria-label="外観テーマ">
-                  <button
-                    type="button"
-                    className={config.uiTheme === 'classic' ? 'active' : ''}
-                    aria-pressed={config.uiTheme === 'classic'}
-                    onClick={() => onConfigChange({ ...config, uiTheme: 'classic' })}
-                  >
-                    標準
-                  </button>
-                  <button
-                    type="button"
-                    className={config.uiTheme === 'google' ? 'active' : ''}
-                    aria-pressed={config.uiTheme === 'google'}
-                    onClick={() => onConfigChange({ ...config, uiTheme: 'google' })}
-                  >
-                    Google モダン
-                  </button>
+                  <section className="other-settings-group">
+                    <h4 className="config-section-heading">外観・基本</h4>
+                    <div className="config-slider-row">
+                      <span>外観テーマ</span>
+                      <div className="segmented-control" role="group" aria-label="外観テーマ">
+                        <button
+                          type="button"
+                          className={config.uiTheme === 'google' ? 'active' : ''}
+                          aria-pressed={config.uiTheme === 'google'}
+                          onClick={() => onConfigChange({ ...config, uiTheme: 'google' })}
+                        >
+                          モダン
+                        </button>
+                        <button
+                          type="button"
+                          className={config.uiTheme === 'classic' ? 'active' : ''}
+                          aria-pressed={config.uiTheme === 'classic'}
+                          onClick={() => onConfigChange({ ...config, uiTheme: 'classic' })}
+                        >
+                          クラシック
+                        </button>
+                      </div>
+                    </div>
+                    <div className="config-slider-row">
+                      <span>地図スタイル</span>
+                      <div className="segmented-control" role="group" aria-label="地図スタイル">
+                        <button
+                          type="button"
+                          className={config.silhouette ? 'active' : ''}
+                          aria-pressed={config.silhouette}
+                          onClick={() => onConfigChange({ ...config, silhouette: true })}
+                        >
+                          白地図
+                        </button>
+                        <button
+                          type="button"
+                          className={!config.silhouette ? 'active' : ''}
+                          aria-pressed={!config.silhouette}
+                          onClick={() => onConfigChange({ ...config, silhouette: false })}
+                        >
+                          色分け図
+                        </button>
+                      </div>
+                    </div>
+                    <div className="config-slider-row">
+                      <span>クイズ選択肢</span>
+                      <div className="segmented-control" role="group" aria-label="クイズ選択肢の配置">
+                        <button
+                          type="button"
+                          className={config.quizChoiceLayout === 'pointing' ? 'active' : ''}
+                          aria-pressed={config.quizChoiceLayout === 'pointing'}
+                          onClick={() =>
+                            onConfigChange({ ...config, quizChoiceLayout: 'pointing' })
+                          }
+                        >
+                          地図上
+                        </button>
+                        <button
+                          type="button"
+                          className={config.quizChoiceLayout === 'bottom' ? 'active' : ''}
+                          aria-pressed={config.quizChoiceLayout === 'bottom'}
+                          onClick={() =>
+                            onConfigChange({ ...config, quizChoiceLayout: 'bottom' })
+                          }
+                        >
+                          下部パネル
+                        </button>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="other-settings-group">
+                    <h4 className="config-section-heading">サウンド</h4>
+                    <div className="config-slider-row">
+                      <span>SE音量 ({config.seVolume}%)</span>
+                      <div className="config-slider-controls">
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={config.seVolume}
+                          aria-label="SE音量"
+                          onChange={(e) =>
+                            onConfigChange({ ...config, seVolume: Number(e.target.value) })
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="btn-secondary btn-xs"
+                          onClick={() => playUiClick(config.seVolume)}
+                        >
+                          テスト音
+                        </button>
+                      </div>
+                    </div>
+                    <div className="config-grid">
+                      <label className="config-check">
+                        <input
+                          type="checkbox"
+                          checked={config.fixActionSound}
+                          onChange={() =>
+                            onConfigChange({
+                              ...config,
+                              fixActionSound: !config.fixActionSound,
+                            })
+                          }
+                        />
+                        <span>効果音を有効にする</span>
+                      </label>
+                    </div>
+                  </section>
+
+                  <section className="other-settings-group">
+                    <h4 className="config-section-heading">保存・動作</h4>
+                    <div className="config-slider-row">
+                      <span>オートセーブ</span>
+                      <div className="segmented-control" role="group" aria-label="オートセーブ頻度">
+                        <button
+                          type="button"
+                          className={
+                            config.autoSaveTiming === 'every_answer' ? 'active' : ''
+                          }
+                          aria-pressed={config.autoSaveTiming === 'every_answer'}
+                          onClick={() =>
+                            onConfigChange({ ...config, autoSaveTiming: 'every_answer' })
+                          }
+                        >
+                          正解ごと
+                        </button>
+                        <button
+                          type="button"
+                          className={config.autoSaveTiming === 'on_exit' ? 'active' : ''}
+                          aria-pressed={config.autoSaveTiming === 'on_exit'}
+                          onClick={() =>
+                            onConfigChange({ ...config, autoSaveTiming: 'on_exit' })
+                          }
+                        >
+                          終了・切替時
+                        </button>
+                      </div>
+                    </div>
+                    <div className="config-slider-row">
+                      <span>描画品質 / アニメ</span>
+                      <div className="segmented-control" role="group" aria-label="描画品質">
+                        <button
+                          type="button"
+                          className={config.quality !== 'low' ? 'active' : ''}
+                          aria-pressed={config.quality !== 'low'}
+                          onClick={() => onConfigChange({ ...config, quality: 'high' })}
+                        >
+                          標準・高
+                        </button>
+                        <button
+                          type="button"
+                          className={config.quality === 'low' ? 'active' : ''}
+                          aria-pressed={config.quality === 'low'}
+                          onClick={() => onConfigChange({ ...config, quality: 'low' })}
+                        >
+                          軽量
+                        </button>
+                      </div>
+                    </div>
+                    <div className="config-slider-row">
+                      <span>FPS設定</span>
+                      <div className="segmented-control" role="group" aria-label="FPS設定">
+                        <button
+                          type="button"
+                          className={config.fpsMode === 'high' ? 'active' : ''}
+                          aria-pressed={config.fpsMode === 'high'}
+                          onClick={() => onConfigChange({ ...config, fpsMode: 'high' })}
+                        >
+                          60fps
+                        </button>
+                        <button
+                          type="button"
+                          className={config.fpsMode === 'low' ? 'active' : ''}
+                          aria-pressed={config.fpsMode === 'low'}
+                          onClick={() => onConfigChange({ ...config, fpsMode: 'low' })}
+                        >
+                          30fps（省電力）
+                        </button>
+                      </div>
+                    </div>
+                  </section>
                 </div>
-              </div>
+              )}
 
               {otherTab === 'changelog' && (
                 <div className="changelog-list">
@@ -1984,114 +2148,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       </ul>
                     </div>
                   ))}
-                </div>
-              )}
-
-              {otherTab === 'sound' && (
-                <div className="other-pane">
-                  <label className="config-slider-row">
-                    <span>SE音量 ({config.seVolume}%)</span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={config.seVolume}
-                      onChange={(e) =>
-                        onConfigChange({ ...config, seVolume: Number(e.target.value) })
-                      }
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="btn-secondary btn-sm"
-                    onClick={() => playUiClick(config.seVolume)}
-                  >
-                    テスト音を鳴らす
-                  </button>
-                </div>
-              )}
-
-              {otherTab === 'quality' && (
-                <div className="other-pane">
-                  <p>
-                    画面エフェクト（ぼかし効果・アニメーション）の負荷を選択します。動作が重い端末では「軽量」をお試しください。
-                  </p>
-                  <div className="segmented-control" role="group" aria-label="描画品質">
-                    <button
-                      type="button"
-                      className={config.quality !== 'low' ? 'active' : ''}
-                      onClick={() => onConfigChange({ ...config, quality: 'high' })}
-                    >
-                      標準・高
-                    </button>
-                    <button
-                      type="button"
-                      className={config.quality === 'low' ? 'active' : ''}
-                      onClick={() => onConfigChange({ ...config, quality: 'low' })}
-                    >
-                      軽量（省負荷）
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {otherTab === 'autosave' && (
-                <div className="other-pane radio-stack">
-                  <label className="radio-card">
-                    <input
-                      type="radio"
-                      name="autosave"
-                      checked={config.autoSaveTiming === 'every_answer'}
-                      onChange={() =>
-                        onConfigChange({ ...config, autoSaveTiming: 'every_answer' })
-                      }
-                    />
-                    <div>
-                      <strong>正解ごとにセーブする</strong>
-                      <p>突然終了しても直前までの進行が残ります</p>
-                    </div>
-                  </label>
-                  <label className="radio-card">
-                    <input
-                      type="radio"
-                      name="autosave"
-                      checked={config.autoSaveTiming === 'on_exit'}
-                      onChange={() =>
-                        onConfigChange({ ...config, autoSaveTiming: 'on_exit' })
-                      }
-                    />
-                    <div>
-                      <strong>タイトルにもどる、アプリ切替時にセーブする</strong>
-                      <p>解答毎の書込負荷を抑えます</p>
-                    </div>
-                  </label>
-                </div>
-              )}
-
-              {otherTab === 'fps' && (
-                <div className="other-pane radio-stack">
-                  <label className="radio-card">
-                    <input
-                      type="radio"
-                      name="fps"
-                      checked={config.fpsMode === 'high'}
-                      onChange={() => onConfigChange({ ...config, fpsMode: 'high' })}
-                    />
-                    <div>
-                      <strong>FPSを高くする（滑らか / 60fps）</strong>
-                    </div>
-                  </label>
-                  <label className="radio-card">
-                    <input
-                      type="radio"
-                      name="fps"
-                      checked={config.fpsMode === 'low'}
-                      onChange={() => onConfigChange({ ...config, fpsMode: 'low' })}
-                    />
-                    <div>
-                      <strong>FPSを低くする（省電力 / 30fps）</strong>
-                    </div>
-                  </label>
                 </div>
               )}
 

@@ -1520,24 +1520,88 @@
   }
 
   /* ---------- Config Modal ---------- */
-  :where([data-theme='google']) .config-section {
-    border-top: 1px solid var(--gm-surface-high);
-    padding-top: 12px;
+  :where([data-theme='google']) .config-category-tabs {
+    padding: 10px 20px;
+    background: var(--gm-surface);
+    border-bottom: 1px solid var(--gm-outline-variant);
+    gap: 6px;
+  }
+
+  :where([data-theme='google']) .config-category-tabs button {
+    border: 1px solid var(--gm-outline-variant);
+    background: var(--gm-surface-lowest);
+    color: var(--gm-ink-muted);
+    border-radius: 9999px;
+    min-block-size: 32px;
+    padding: 5px 14px;
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+
+  :where([data-theme='google']) .config-category-tabs button:hover:not(.active) {
+    background: var(--gm-primary-tint);
+    border-color: var(--gm-primary);
+    color: var(--gm-primary);
+  }
+
+  :where([data-theme='google']) .config-category-tabs button.active {
+    background: var(--gm-primary-container);
+    border-color: var(--gm-primary);
+    color: var(--gm-on-primary-container);
+    font-weight: 600;
+  }
+
+  :where([data-theme='google']) .config-section,
+  :where([data-theme='google']) .other-settings-group {
+    background: var(--gm-surface-low);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 16px;
+    padding: 14px 16px;
+    gap: 12px;
+  }
+
+  :where([data-theme='google']) .config-section-header {
+    border-bottom: 1px solid var(--gm-surface-high);
+    padding-bottom: 8px;
   }
 
   :where([data-theme='google']) .config-section h4,
-  :where([data-theme='google']) .config-section-heading {
+  :where([data-theme='google']) .config-section-heading,
+  :where([data-theme='google']) .other-settings-group h4 {
     color: var(--gm-primary);
     font-weight: 600;
     letter-spacing: 0.01em;
+    margin: 0;
+  }
+
+  :where([data-theme='google']) .config-section-desc {
+    color: var(--gm-ink-muted);
+    text-wrap: pretty;
+  }
+
+  :where([data-theme='google']) .config-subgroup {
+    border-top: 1px solid var(--gm-surface-high);
+    padding-top: 10px;
+    gap: 8px;
+  }
+
+  :where([data-theme='google']) .config-subgroup-title {
+    display: inline-flex;
+    align-self: flex-start;
+    padding: 2px 10px;
+    border-radius: 9999px;
+    background: var(--gm-surface-high);
+    color: var(--gm-ink-muted);
+    font-size: 0.74rem;
+    font-weight: 600;
   }
 
   :where([data-theme='google']) .config-check {
-    min-block-size: 34px;
+    min-block-size: 36px;
     padding: 6px 10px;
     border-radius: 12px;
     border: 1px solid var(--gm-outline-variant);
-    background: var(--gm-surface-low);
+    background: var(--gm-surface-lowest);
     color: var(--gm-ink);
   }
 
@@ -2139,6 +2203,7 @@
       .tray-toggle-btn,
       .data-tab-btn,
       .other-tabs-bar button,
+      .config-category-tabs button,
       .tiiki-tabs button,
       .tiiki-chip-strip button,
       .result-missed-item,

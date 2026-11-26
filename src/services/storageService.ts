@@ -9,6 +9,7 @@ import type {
 const KEYS = {
   CONFIG: 'municipality_game_config',
   CONFIG_POINTING_MIGRATED: 'municipality_game_pointing_default_v1',
+  CONFIG_MODERN_MIGRATED: 'municipality_game_modern_default_v1',
   RECORDS: 'municipality_game_records',
   AUTO_SAVE: 'municipality_game_auto_save',
   MANUAL_SAVES: 'municipality_game_manual_saves',
@@ -37,7 +38,7 @@ export const DEFAULT_CONFIG: ConfigState = {
   nameOnFix: true,
   dragInertia: 0.65,
   quizChoiceLayout: 'pointing',
-  uiTheme: 'classic',
+  uiTheme: 'google',
 };
 
 const DEFAULT_TAGS: MapTag[] = [
@@ -74,12 +75,19 @@ export function loadConfig(): ConfigState {
     merged.quizChoiceLayout = 'pointing';
   }
   if (merged.uiTheme !== 'classic' && merged.uiTheme !== 'google') {
-    merged.uiTheme = 'classic';
+    merged.uiTheme = 'google';
   }
   try {
     if (!window.localStorage.getItem(KEYS.CONFIG_POINTING_MIGRATED)) {
       merged.quizChoiceLayout = 'pointing';
       window.localStorage.setItem(KEYS.CONFIG_POINTING_MIGRATED, '1');
+      if (window.localStorage.getItem(KEYS.CONFIG)) {
+        safeWrite(KEYS.CONFIG, merged);
+      }
+    }
+    if (!window.localStorage.getItem(KEYS.CONFIG_MODERN_MIGRATED)) {
+      merged.uiTheme = 'google';
+      window.localStorage.setItem(KEYS.CONFIG_MODERN_MIGRATED, '1');
       if (window.localStorage.getItem(KEYS.CONFIG)) {
         safeWrite(KEYS.CONFIG, merged);
       }

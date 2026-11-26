@@ -6,11 +6,17 @@ import App from './App.tsx';
 
 try {
   const raw = window.localStorage.getItem('municipality_game_config');
-  let savedTheme: 'classic' | 'google' = 'classic';
+  const migratedModern = Boolean(
+    window.localStorage.getItem('municipality_game_modern_default_v1'),
+  );
+  let savedTheme: 'classic' | 'google' = 'google';
   if (raw) {
     const parsed = JSON.parse(raw) as { uiTheme?: unknown; quality?: unknown } | null;
     if (parsed && typeof parsed === 'object') {
-      if (parsed.uiTheme === 'google' || parsed.uiTheme === 'classic') {
+      if (
+        parsed.uiTheme === 'google' ||
+        (parsed.uiTheme === 'classic' && migratedModern)
+      ) {
         savedTheme = parsed.uiTheme;
       }
       if (
@@ -24,7 +30,7 @@ try {
   }
   document.documentElement.dataset.theme = savedTheme;
 } catch {
-  document.documentElement.dataset.theme = 'classic';
+  document.documentElement.dataset.theme = 'google';
 }
 
 createRoot(document.getElementById('root')!).render(

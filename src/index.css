@@ -2089,19 +2089,83 @@
 }
 
 /* ---------- Config ---------- */
+.config-category-tabs {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--bg-muted);
+  border-bottom: 1px solid var(--border);
+}
+.config-category-tabs button {
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--ink-muted);
+  border-radius: 999px;
+  min-block-size: 28px;
+  padding: 4px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+}
+.config-category-tabs button:hover:not(.active) {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+.config-category-tabs button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
 .config-quick-actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
 .config-section {
-  border-top: 1px solid var(--bg-muted);
-  padding-top: 10px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.config-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+  flex-wrap: wrap;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
 }
 .config-section h4,
 .config-section-heading {
-  margin: 0 0 8px;
-  font-size: 0.9rem;
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+.config-section-desc {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--ink-muted);
+}
+.config-subgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+.config-subgroup:first-of-type {
+  padding-top: 0;
+  border-top: none;
+}
+.config-subgroup-title {
+  font-size: 0.75rem;
   font-weight: 800;
   color: var(--ink-muted);
 }
@@ -2122,11 +2186,34 @@
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
   font-size: 0.86rem;
-  margin-bottom: 6px;
+  margin-bottom: 0;
 }
-.config-slider-row input {
-  width: 180px;
+.config-slider-row input[type='range'] {
+  width: 170px;
+}
+.config-slider-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.config-reset-btn {
+  margin-right: auto;
+}
+.other-settings-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.other-settings-group {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 /* ---------- GameInfo & Question Count ---------- */
