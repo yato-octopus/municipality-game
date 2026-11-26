@@ -5,7 +5,7 @@ import {
   PREF_REGION_GROUPS,
 } from '../data/gameCatalog';
 import { MAX_ZOOM_RATIO, MIN_ZOOM_RATIO, useMapViewport } from '../hooks/useMapViewport';
-import { filterPiecesByKeyword } from '../services/dataAnalyzer';
+import { filterPiecesByKeyword, normalizeSearchText } from '../services/dataAnalyzer';
 import { loadSessionMap } from '../services/mapDataLoader';
 import { getJapanRegionBBox } from '../services/regionJumpUtils';
 import type { LoadedSessionMap } from '../services/mapDataLoader';
@@ -24,7 +24,37 @@ import { TagManagerModal } from './TagManagerModal';
 interface ExtraPieceLabel {
   name: string;
   ruby: string;
+  prefCode?: string;
   prefName?: string;
+}
+
+type QuickSearchItem =
+  | { kind: 'local'; piece: MapPieceItem }
+  | {
+      kind: 'cross';
+      id: string;
+      name: string;
+      ruby: string;
+      prefName?: string;
+      targetAreaId: string;
+      scopeBadge: string;
+    };
+
+function scoreSearchCandidate(name: string, ruby: string, q: string): number {
+  const nName = normalizeSearchText(name);
+  const nRuby = normalizeSearchText(ruby);
+  if (nName === q || nRuby === q) return 0;
+  if (nName.startsWith(q) || nRuby.startsWith(q)) return 1;
+  if (nName.includes(q) || nRuby.includes(q)) return 2;
+  return 3;
+}
+
+function formatNationalOptionLabel(a: AreaDefinition): string {
+  const count = a.totalCount.toLocaleString();
+  if (a.id === '00_japan') return `全国：都道府県（${count}件）`;
+  if (a.id === '00_japan_all') return `全国：全市区町村（${count}件）`;
+  if (a.id === '00_japan_cities') return `全国：全市（${count}件）`;
+  return `${a.name}（${count}件）`;
 }
 
 interface ViewModeScreenProps {
@@ -79,7 +109,15 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
   const [searchOpen, setSearchOpen] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const consumedFocusKeyRef = useRef<string | null>(null);
+  const [pendingFocus, setPendingFocus] = useState<{
+    areaId: string;
+    pieceId: string;
+    zoom: boolean;
+  } | null>(() =>
+    initialFocusPieceId
+      ? { areaId: initialAreaId, pieceId: initialFocusPieceId, zoom: true }
+      : null,
+  );
 
   const geoAreaDef = useMemo(
     () => GEOGRAPHY_VIEW_AREAS.find((g) => g.id === selectedAreaId) ?? null,
@@ -92,9 +130,33 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
     [areas, selectedAreaId],
   );
 
-  const currentViewTitle = geoAreaDef ? geoAreaDef.name : area.name;
+  const currentViewTitle = geoAreaDef
+    ? geoAreaDef.name
+    : area.id === '00_japan_all'
+      ? '全国（全市区町村）'
+      : area.name;
   const loadedMap = loadedState?.areaId === selectedAreaId ? loadedState.map : null;
-  const loading = loadedMap === null;
+  const displayMap = loadedState?.map ?? null;
+  const isLoadingMap = loadedMap === null;
+  const renderedAreaId = loadedState?.areaId ?? selectedAreaId;
+  const renderedIsGeoView = useMemo(
+    () => GEOGRAPHY_VIEW_AREAS.some((g) => g.id === renderedAreaId),
+    [renderedAreaId],
+  );
+
+  const selectArea = useCallback(
+    (
+      nextAreaId: string,
+      nextFocus: { areaId: string; pieceId: string; zoom: boolean } | null = null,
+    ) => {
+      setPendingFocus(nextFocus);
+      setSelectedAreaId(nextAreaId);
+      setSelectedPiece(null);
+      setQuickQuery('');
+      setSearchOpen(false);
+    },
+    [],
+  );
 
   useEffect(() => {
     let active = true;
@@ -135,7 +197,7 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
     };
   }, [selectedAreaId, geoAreaDef, area]);
 
-  const initialBBox = loadedMap?.viewBBox ?? [22, 34, 940, 920];
+  const initialBBox = displayMap?.viewBBox ?? [22, 34, 940, 920];
   const {
     svgRef,
     viewBox,
@@ -168,21 +230,24 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
     [animateToBBox],
   );
 
-  // Auto-focus requested piece when opened from GameInfo -> DataTable
+  // Auto-focus requested piece from GameInfo -> DataTable, cross-scope search, or drill-down
   useEffect(() => {
-    if (!loadedMap || !initialFocusPieceId || selectedAreaId !== initialAreaId) return;
-    const key = `${initialAreaId}::${initialFocusPieceId}`;
-    if (consumedFocusKeyRef.current === key) return;
+    if (!loadedMap || !pendingFocus || pendingFocus.areaId !== selectedAreaId) return;
+    const req = pendingFocus;
     const target =
-      loadedMap.targetPieces.find((p) => p.id === initialFocusPieceId) ??
-      loadedMap.contextPieces.find((p) => p.id === initialFocusPieceId);
-    if (!target) return;
-    consumedFocusKeyRef.current = key;
+      loadedMap.targetPieces.find((p) => p.id === req.pieceId) ??
+      loadedMap.contextPieces.find((p) => p.id === req.pieceId);
     const raf = requestAnimationFrame(() => {
-      focusPiece(target);
+      setPendingFocus((cur) => (cur === req ? null : cur));
+      if (!target) return;
+      if (req.zoom) {
+        focusPiece(target);
+      } else {
+        setSelectedPiece(target);
+      }
     });
     return () => cancelAnimationFrame(raf);
-  }, [loadedMap, initialFocusPieceId, initialAreaId, selectedAreaId, focusPiece]);
+  }, [loadedMap, pendingFocus, selectedAreaId, focusPiece]);
 
   // Keyboard shortcuts (+ / - / 0 / / / Esc)
   useEffect(() => {
@@ -226,10 +291,83 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [showDataModal, showTagModal, selectedPiece, loadedMap, zoomByFactor, fitBBox]);
 
-  const quickSearchResults = useMemo(() => {
-    if (!loadedMap || !quickQuery.trim()) return [];
-    return filterPiecesByKeyword(loadedMap.targetPieces, quickQuery).slice(0, 10);
-  }, [loadedMap, quickQuery]);
+  const quickSearchResults = useMemo((): QuickSearchItem[] => {
+    const q = normalizeSearchText(quickQuery);
+    if (!q) return [];
+
+    const localRaw = loadedMap ? filterPiecesByKeyword(loadedMap.targetPieces, q) : [];
+    const localSorted = [...localRaw].sort(
+      (a, b) =>
+        scoreSearchCandidate(a.name, a.ruby, q) - scoreSearchCandidate(b.name, b.ruby, q) ||
+        a.id.localeCompare(b.id, 'en'),
+    );
+    const localIds = new Set(localSorted.map((p) => p.id));
+
+    const crossMatches: (Extract<QuickSearchItem, { kind: 'cross' }> & { score: number })[] = [];
+    if (allKnownPieces) {
+      for (const [id, entry] of allKnownPieces.entries()) {
+        if (localIds.has(id)) continue;
+        const nName = normalizeSearchText(entry.name);
+        const nRuby = normalizeSearchText(entry.ruby);
+        const nPref = entry.prefName ? normalizeSearchText(entry.prefName) : '';
+        if (
+          !nName.includes(q) &&
+          !nRuby.includes(q) &&
+          !nPref.includes(q) &&
+          !id.toLowerCase().includes(q)
+        ) {
+          continue;
+        }
+        const isPref = id.startsWith('pref_');
+        crossMatches.push({
+          kind: 'cross',
+          id,
+          name: entry.name,
+          ruby: entry.ruby,
+          prefName: entry.prefName,
+          targetAreaId: isPref ? '00_japan' : '00_japan_all',
+          scopeBadge: isPref ? '都道府県' : '全国市区町村',
+          score: scoreSearchCandidate(entry.name, entry.ruby, q),
+        });
+      }
+      crossMatches.sort((a, b) => a.score - b.score || a.id.localeCompare(b.id, 'en'));
+    }
+
+    const localQuota = crossMatches.length > 0 ? 6 : 10;
+    const pickedLocal: QuickSearchItem[] = localSorted
+      .slice(0, localQuota)
+      .map((piece) => ({ kind: 'local', piece }));
+    const remaining = Math.max(0, 10 - pickedLocal.length);
+    const pickedCross: QuickSearchItem[] = crossMatches
+      .slice(0, remaining)
+      .map((item) => ({
+        kind: item.kind,
+        id: item.id,
+        name: item.name,
+        ruby: item.ruby,
+        prefName: item.prefName,
+        targetAreaId: item.targetAreaId,
+        scopeBadge: item.scopeBadge,
+      }));
+    return [...pickedLocal, ...pickedCross];
+  }, [loadedMap, quickQuery, allKnownPieces]);
+
+  const handleSelectQuickSearchItem = useCallback(
+    (item: QuickSearchItem) => {
+      if (item.kind === 'local') {
+        focusPiece(item.piece);
+        setQuickQuery('');
+        setSearchOpen(false);
+        return;
+      }
+      selectArea(item.targetAreaId, {
+        areaId: item.targetAreaId,
+        pieceId: item.id,
+        zoom: true,
+      });
+    },
+    [focusPiece, selectArea],
+  );
 
   const jumpKind: 'japan' | 'none' =
     isGeoView ||
@@ -276,10 +414,15 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
   }, [areas]);
 
   const selectedPrefCapitalRuby = useMemo(() => {
-    if (!prefsData || selectedAreaId !== '00_japan' || !selectedPiece?.prefCode) return null;
+    if (!prefsData || renderedAreaId !== '00_japan' || !selectedPiece?.prefCode) return null;
     const meta = prefsData.prefs.find((p) => p.code === selectedPiece.prefCode);
     return meta?.capitalRuby ?? null;
-  }, [prefsData, selectedAreaId, selectedPiece]);
+  }, [prefsData, renderedAreaId, selectedPiece]);
+
+  const selectedPrefArea = useMemo(() => {
+    if (!selectedPiece?.prefCode) return undefined;
+    return prefByCode.get(selectedPiece.prefCode);
+  }, [prefByCode, selectedPiece]);
 
   const handlePlayCurrentArea = () => {
     if (!onStartGame || !loadedMap) return;
@@ -362,21 +505,52 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
           <button type="button" className="hud-btn hud-btn-ghost" onClick={onGoTitle}>
             {returnLabel}
           </button>
+          <div className="view-layer-switch" role="group" aria-label="地図の表示種別">
+            <button
+              type="button"
+              className={`view-layer-btn ${selectedAreaId === '00_japan' ? 'active' : ''}`}
+              aria-pressed={selectedAreaId === '00_japan'}
+              onClick={() => selectArea('00_japan')}
+            >
+              都道府県
+            </button>
+            <button
+              type="button"
+              className={`view-layer-btn ${selectedAreaId === '00_japan_all' ? 'active' : ''}`}
+              aria-pressed={selectedAreaId === '00_japan_all'}
+              title="全国1,747市区町村を表示"
+              onClick={() => selectArea('00_japan_all')}
+            >
+              市区町村
+            </button>
+            <button
+              type="button"
+              className={`view-layer-btn ${selectedAreaId === '00_japan_cities' ? 'active' : ''}`}
+              aria-pressed={selectedAreaId === '00_japan_cities'}
+              title="全国の市のみを強調表示"
+              onClick={() => selectArea('00_japan_cities')}
+            >
+              市のみ
+            </button>
+            <button
+              type="button"
+              className={`view-layer-btn ${isGeoView ? 'active' : ''}`}
+              aria-pressed={isGeoView}
+              onClick={() => selectArea('geo_all')}
+            >
+              自然地理
+            </button>
+          </div>
           <select
             className="view-area-select"
             value={selectedAreaId}
-            onChange={(e) => {
-              setSelectedAreaId(e.target.value);
-              setSelectedPiece(null);
-              setQuickQuery('');
-              setSearchOpen(false);
-            }}
+            onChange={(e) => selectArea(e.target.value)}
             aria-label="閲覧エリア選択"
           >
             <optgroup label="全国">
               {nationalAreas.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.name}（{a.totalCount.toLocaleString()}件）
+                  {formatNationalOptionLabel(a)}
                 </option>
               ))}
             </optgroup>
@@ -394,7 +568,7 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
                   if (!p) return null;
                   return (
                     <option key={p.id} value={p.id}>
-                      {p.name}（{p.totalCount.toLocaleString()}件）
+                      {p.name}の市区町村（{p.totalCount.toLocaleString()}件）
                     </option>
                   );
                 })}
@@ -406,10 +580,10 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
             <input
               ref={searchInputRef}
               type="search"
-              placeholder="地名検索 (/)"
-              aria-label="表示中の地図から地名を検索して移動"
+              placeholder="地名・市区町村検索 (/)"
+              aria-label="都道府県・市区町村などの地名を検索して移動"
               value={quickQuery}
-              disabled={!loadedMap}
+              disabled={!displayMap}
               onFocus={() => setSearchOpen(true)}
               onBlur={() => {
                 window.setTimeout(() => setSearchOpen(false), 160);
@@ -421,9 +595,7 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && quickSearchResults.length > 0) {
                   e.preventDefault();
-                  focusPiece(quickSearchResults[0]);
-                  setQuickQuery('');
-                  setSearchOpen(false);
+                  handleSelectQuickSearchItem(quickSearchResults[0]);
                 }
               }}
             />
@@ -438,26 +610,33 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
                     該当なし
                   </div>
                 ) : (
-                  quickSearchResults.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      role="option"
-                      className="tag-piece-link"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        focusPiece(p);
-                        setQuickQuery('');
-                        setSearchOpen(false);
-                      }}
-                    >
-                      <strong>{p.name}</strong>
-                      <span className="muted">{p.ruby}</span>
-                      {p.prefName && p.prefName !== p.name && (
-                        <span className="muted">({p.prefName})</span>
-                      )}
-                    </button>
-                  ))
+                  quickSearchResults.map((item) => {
+                    const key = item.kind === 'local' ? item.piece.id : `cross-${item.id}`;
+                    const name = item.kind === 'local' ? item.piece.name : item.name;
+                    const ruby = item.kind === 'local' ? item.piece.ruby : item.ruby;
+                    const prefName = item.kind === 'local' ? item.piece.prefName : item.prefName;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        role="option"
+                        className="tag-piece-link"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSelectQuickSearchItem(item);
+                        }}
+                      >
+                        <strong>{name}</strong>
+                        <span className="muted">{ruby}</span>
+                        {prefName && prefName !== name && (
+                          <span className="muted">({prefName})</span>
+                        )}
+                        {item.kind === 'cross' && (
+                          <span className="view-search-scope-badge">{item.scopeBadge}</span>
+                        )}
+                      </button>
+                    );
+                  })
                 )}
               </div>
             )}
@@ -613,17 +792,17 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
           </button>
         </div>
 
-        {loading || !loadedMap ? (
+        {!displayMap ? (
           <div className="map-loading-state">精巧な白地図データを読み込み中...</div>
         ) : (
           <MapCanvas
             svgRef={svgRef}
             viewBox={viewBox}
             viewBoxString={viewBoxString}
-            targetPieces={loadedMap.targetPieces}
-            contextPieces={loadedMap.contextPieces}
-            bgPrefPieces={loadedMap.bgPrefPieces}
-            insets={loadedMap.insets}
+            targetPieces={displayMap.targetPieces}
+            contextPieces={displayMap.contextPieces}
+            bgPrefPieces={displayMap.bgPrefPieces}
+            insets={displayMap.insets}
             completedIds={completedSet}
             activePieceId={null}
             hintPieceId={null}
@@ -631,16 +810,31 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
             config={config}
             tags={tags}
             forceShowNames={showNames}
-            showCapitalMarks={selectedAreaId === '00_japan' && showCapitalMarks}
-            swapCapitalLabel={selectedAreaId === '00_japan' && swapCapitalLabel}
-            isTerrainMode={isGeoView}
+            showCapitalMarks={renderedAreaId === '00_japan' && showCapitalMarks}
+            swapCapitalLabel={renderedAreaId === '00_japan' && swapCapitalLabel}
+            isTerrainMode={renderedIsGeoView}
             enablePrefHoverTooltip={true}
-            enablePrefTint={!isGeoView}
-            onPieceClick={setSelectedPiece}
+            showPieceNameInTooltip={true}
+            enablePrefTint={!renderedIsGeoView}
+            onPieceClick={(piece) => {
+              if (!isLoadingMap) {
+                setSelectedPiece(piece);
+              }
+            }}
             onPanBy={panByScreenDelta}
             onFinishPan={finishPan}
             onZoomByFactor={zoomByFactor}
           />
+        )}
+
+        {isLoadingMap && displayMap && (
+          <div className="view-loading-pill" role="status" aria-live="polite">
+            {selectedAreaId === '00_japan_all' ||
+            selectedAreaId === '00_japan_cities' ||
+            selectedAreaId.startsWith('pref_')
+              ? '市区町村データを読み込み中...'
+              : '地図データを読み込み中...'}
+          </div>
         )}
 
         {selectedPiece && (
@@ -684,7 +878,7 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
             )}
 
             <div className="hud-info-meta">
-              {!isGeoView && (
+              {!renderedIsGeoView && (
                 <span>コード: {selectedPiece.id.replace('pref_', '')}</span>
               )}
               {selectedPiece.population > 0 && (
@@ -695,13 +889,59 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
               )}
               {selectedPiece.adminAreaLabel && (
                 <span>
-                  {selectedAreaId === '00_japan' ? '県庁:' : isGeoView ? '分類:' : '区分:'}{' '}
+                  {renderedAreaId === '00_japan' ? '県庁:' : renderedIsGeoView ? '分類:' : '区分:'}{' '}
                   {selectedPiece.adminAreaLabel}
                   {selectedPrefCapitalRuby ? `（${selectedPrefCapitalRuby}）` : ''}
                 </span>
               )}
               {selectedPiece.countyLabel && <span>{selectedPiece.countyLabel}</span>}
             </div>
+
+            {!renderedIsGeoView && selectedPrefArea && (
+              <div className="view-info-drill-row">
+                {renderedAreaId === '00_japan' && (
+                  <button
+                    type="button"
+                    className="view-info-drill-btn"
+                    onClick={() => selectArea(selectedPrefArea.id)}
+                  >
+                    🗺 {selectedPiece.name}の市区町村を見る（
+                    {selectedPrefArea.totalCount.toLocaleString()}件）
+                  </button>
+                )}
+                {(renderedAreaId === '00_japan_all' || renderedAreaId === '00_japan_cities') && (
+                  <button
+                    type="button"
+                    className="view-info-drill-btn"
+                    onClick={() =>
+                      selectArea(selectedPrefArea.id, {
+                        areaId: selectedPrefArea.id,
+                        pieceId: selectedPiece.id,
+                        zoom: false,
+                      })
+                    }
+                  >
+                    🔍 {selectedPrefArea.name}の市区町村だけ表示（
+                    {selectedPrefArea.totalCount.toLocaleString()}件）
+                  </button>
+                )}
+                {renderedAreaId.startsWith('pref_') && (
+                  <button
+                    type="button"
+                    className="view-info-drill-btn"
+                    onClick={() =>
+                      selectArea('00_japan_all', {
+                        areaId: '00_japan_all',
+                        pieceId: selectedPiece.id,
+                        zoom: true,
+                      })
+                    }
+                  >
+                    🗾 全国市区町村マップで位置を見る
+                  </button>
+                )}
+              </div>
+            )}
 
             <div className="hud-tag-row">
               <span className="hud-tag-title">タグ:</span>

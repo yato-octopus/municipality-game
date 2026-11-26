@@ -963,6 +963,50 @@
     color: var(--gm-ink);
   }
 
+  :where([data-theme='google']) .view-layer-switch {
+    background: var(--gm-surface-high);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 9999px;
+    padding: 2px;
+    gap: 2px;
+  }
+
+  :where([data-theme='google']) .view-layer-btn {
+    border-radius: 9999px;
+    min-block-size: 28px;
+    min-inline-size: var(--target-size);
+    padding: 4px 11px;
+    color: var(--gm-ink-muted);
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  :where([data-theme='google']) .view-layer-btn:hover:not(.active) {
+    background: color-mix(in oklab, var(--gm-primary) 8%, transparent);
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .view-layer-btn.active {
+    background: var(--gm-primary-container);
+    color: var(--gm-on-primary-container);
+    border-color: color-mix(in oklab, var(--gm-primary) 45%, transparent);
+    box-shadow: var(--gm-shadow-1);
+  }
+
+  :where([data-theme='google']) .view-search-scope-badge {
+    background: var(--gm-primary-container);
+    color: var(--gm-on-primary-container);
+    border-radius: 9999px;
+  }
+
+  :where([data-theme='google']) .view-loading-pill {
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 9999px;
+    color: var(--gm-primary);
+    box-shadow: var(--gm-shadow-2);
+  }
+
   :where([data-theme='google']) .view-quick-search input {
     border: 1px solid var(--gm-outline-variant);
     border-radius: 9999px;
@@ -1104,6 +1148,21 @@
     border-radius: 8px;
     color: var(--gm-ink);
     padding: 6px 10px;
+  }
+
+  :where([data-theme='google']) .view-info-drill-btn {
+    border-radius: 9999px;
+    min-block-size: 32px;
+    padding: 6px 12px;
+    background: var(--gm-primary-container);
+    border: 1px solid color-mix(in oklab, var(--gm-primary) 35%, transparent);
+    color: var(--gm-on-primary-container);
+    font-weight: 600;
+  }
+
+  :where([data-theme='google']) .view-info-drill-btn:hover {
+    background: color-mix(in oklab, var(--gm-primary) 18%, var(--gm-primary-container));
+    border-color: var(--gm-primary);
   }
 
   :where([data-theme='google']) .hud-wiki-link {
@@ -2119,13 +2178,18 @@
     }
 
     :where([data-theme='google']) .view-area-select {
-      max-width: 190px;
-      font-size: 0.8rem;
+      max-width: 220px;
+      font-size: 0.78rem;
       padding: 4px 10px;
     }
 
+    :where([data-theme='google']) .view-layer-btn {
+      padding: 4px 9px;
+      font-size: 0.74rem;
+    }
+
     :where([data-theme='google']) .view-quick-search input {
-      width: 142px;
+      width: 148px;
       font-size: 0.78rem;
       padding: 4px 10px;
     }
@@ -2179,6 +2243,8 @@
       .btn-danger,
       .hud-btn,
       .view-toggle-btn,
+      .view-layer-btn,
+      .view-info-drill-btn,
       .area-category-tabs button,
       .submode-row-btn,
       .quiz-choice-btn
@@ -2262,6 +2328,7 @@
     .hud-jump-bar,
     .hud-info-card,
     .hud-last-answer-pill,
+    .view-loading-pill,
     .quiz-pointing-card,
     .pref-hover-tooltip
   ) {

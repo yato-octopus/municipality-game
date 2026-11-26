@@ -964,7 +964,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 }}
               >
                 <span className="menu-btn-title">白地図閲覧・データ</span>
-                <span className="menu-btn-sub">自然地理100・標高図・集計テーブル</span>
+                <span className="menu-btn-sub">都道府県・市区町村・自然地理100・集計テーブル</span>
               </button>
               <button
                 type="button"

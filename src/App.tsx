@@ -163,18 +163,27 @@ export function App() {
   }, [prefsData, totalMunis, totalCities]);
 
   const allKnownPieces = useMemo(() => {
-    const map = new Map<string, { name: string; ruby: string; prefName?: string }>();
+    const map = new Map<
+      string,
+      { name: string; ruby: string; prefCode?: string; prefName?: string }
+    >();
     const prefNameByCode = new Map<string, string>();
     if (prefsData) {
       for (const p of prefsData.prefs) {
         prefNameByCode.set(p.code, p.name);
-        map.set(`pref_${p.code}`, { name: p.name, ruby: p.ruby, prefName: p.name });
+        map.set(`pref_${p.code}`, {
+          name: p.name,
+          ruby: p.ruby,
+          prefCode: p.code,
+          prefName: p.name,
+        });
       }
     }
     for (const m of muniList) {
       map.set(m.code, {
         name: m.name,
         ruby: m.ruby,
+        prefCode: m.prefCode,
         prefName: prefNameByCode.get(m.prefCode),
       });
     }

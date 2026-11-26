@@ -45,6 +45,8 @@ interface MapCanvasProps {
   hoverTargetId?: string | null;
   isTerrainMode?: boolean;
   enablePrefHoverTooltip?: boolean;
+  /** Show exact piece name (e.g. municipality + prefecture or terrain name) in hover tooltip; keep false in Play modes */
+  showPieceNameInTooltip?: boolean;
   enablePrefTint?: boolean;
   hintArea?: HintAreaOverlay | null;
   hintFittedPieceId?: string | null;
@@ -578,6 +580,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
   hoverTargetId = null,
   isTerrainMode = false,
   enablePrefHoverTooltip = false,
+  showPieceNameInTooltip = false,
   enablePrefTint = false,
   hintArea = null,
   hintFittedPieceId = null,
@@ -665,11 +668,13 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
   const onPanByRef = useRef(onPanBy);
   const onFinishPanRef = useRef(onFinishPan);
   const enablePrefHoverTooltipRef = useRef(enablePrefHoverTooltip);
+  const showPieceNameInTooltipRef = useRef(showPieceNameInTooltip);
   useEffect(() => {
     onZoomByFactorRef.current = onZoomByFactor;
     onPanByRef.current = onPanBy;
     onFinishPanRef.current = onFinishPan;
     enablePrefHoverTooltipRef.current = enablePrefHoverTooltip;
+    showPieceNameInTooltipRef.current = showPieceNameInTooltip;
     if (!enablePrefHoverTooltip) {
       hidePrefTooltip();
     }
@@ -702,6 +707,17 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
             break;
           }
           continue;
+        }
+        if (showPieceNameInTooltipRef.current) {
+          const pieceLabelEl = el.closest('[data-piece-label]');
+          const pieceLabel =
+            pieceLabelEl && svg.contains(pieceLabelEl)
+              ? pieceLabelEl.getAttribute('data-piece-label')
+              : null;
+          if (pieceLabel) {
+            prefName = pieceLabel;
+            break;
+          }
         }
         const attr = el.getAttribute('data-pref-name');
         if (attr) {
@@ -1116,6 +1132,13 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
   ) => {
     if (pieces.length === 0) return null;
 
+    const formatPieceTooltipLabel = (piece: MapPieceItem): string | undefined => {
+      if (!showPieceNameInTooltip) return undefined;
+      return piece.prefName && piece.prefName !== piece.name
+        ? `${piece.name}（${piece.prefName}）`
+        : piece.name;
+    };
+
     const tinyAssistCircles = pieces.map((piece) => {
       if (piece.areaPx >= 3) return null;
       const actionable = isPieceActionable(piece);
@@ -1123,6 +1146,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
       const isHover = hoverTargetId === piece.id;
       const piecePrefName =
         piece.prefName || (piece.id.startsWith('pref_') ? piece.name : '');
+      const pieceHoverLabel = formatPieceTooltipLabel(piece);
       const cx = inset ? (piece.center[0] - inset.tx) / inset.scale : piece.center[0];
       const cy = inset ? (piece.center[1] - inset.ty) / inset.scale : piece.center[1];
       const r = getCappedHitRadius(piece, inset ? inset.scale : 1);
@@ -1131,6 +1155,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
           key={`hit-${piece.id}`}
           data-piece-id={piece.id}
           data-pref-name={piecePrefName}
+          data-piece-label={pieceHoverLabel}
           cx={cx}
           cy={cy}
           r={r}
@@ -1149,6 +1174,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
       const actionable = isPieceActionable(piece);
       const piecePrefName =
         piece.prefName || (piece.id.startsWith('pref_') ? piece.name : '');
+      const pieceHoverLabel = formatPieceTooltipLabel(piece);
       return (
         <g
           key={piece.id}
@@ -1158,6 +1184,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
           <path
             data-piece-id={piece.id}
             data-pref-name={piecePrefName}
+            data-piece-label={pieceHoverLabel}
             d={piece.path}
             fill={st.fill}
             fillRule="evenodd"
@@ -1415,6 +1442,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
             return (
               <g
                 key={f.id}
+                data-piece-label={showPieceNameInTooltip ? f.name : undefined}
                 onClick={actionable ? () => tryPieceClick(f) : undefined}
                 className={clickableClass}
               >
@@ -1524,6 +1552,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
             return (
               <g
                 key={f.id}
+                data-piece-label={showPieceNameInTooltip ? f.name : undefined}
                 onClick={actionable ? () => tryPieceClick(f) : undefined}
                 className={clickableClass}
               >
@@ -1673,6 +1702,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
             return (
               <g
                 key={f.id}
+                data-piece-label={showPieceNameInTooltip ? f.name : undefined}
                 onClick={actionable ? () => tryPieceClick(f) : undefined}
                 className={clickableClass}
               >
@@ -1798,6 +1828,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
             return (
               <g
                 key={f.id}
+                data-piece-label={showPieceNameInTooltip ? f.name : undefined}
                 onClick={actionable ? () => tryPieceClick(f) : undefined}
                 className={clickableClass}
               >
@@ -1949,6 +1980,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
           return (
             <g
               key={f.id}
+              data-piece-label={showPieceNameInTooltip ? f.name : undefined}
               onClick={actionable ? () => tryPieceClick(f) : undefined}
               className={clickableClass}
             >
