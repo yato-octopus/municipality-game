@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { GameSessionShell } from './components/GameSessionShell';
 import { TitleScreen } from './components/TitleScreen';
 import { ViewModeScreen } from './components/ViewModeScreen';
@@ -85,10 +86,15 @@ export function App() {
   const [view, setView] = useState<AppView>({ kind: 'title', screen: 'title' });
   const [lastCategoryTab, setLastCategoryTab] = useState<AreaCategory>('japan');
 
-  // Mirror quality setting to <html> as well as .app-root for CSS selectors
+  // Mirror theme & quality settings to <html> as well as .app-root for CSS selectors
   useEffect(() => {
+    document.documentElement.dataset.theme = config.uiTheme;
     document.documentElement.dataset.quality = config.quality;
-  }, [config.quality]);
+    const themeMeta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (themeMeta) {
+      themeMeta.content = config.uiTheme === 'google' ? '#f0f4f9' : '#dcebfa';
+    }
+  }, [config.uiTheme, config.quality]);
 
   // Prevent browser page zoom when pinching on UI overlays (map SVG still handles its own zoom)
   useEffect(() => {
@@ -175,10 +181,29 @@ export function App() {
     return map;
   }, [prefsData, muniList]);
 
-  const handleConfigChange = useCallback((next: ConfigState) => {
-    setConfig(next);
-    saveConfig(next);
-  }, []);
+  const handleConfigChange = useCallback(
+    (next: ConfigState) => {
+      saveConfig(next);
+      if (
+        next.uiTheme !== config.uiTheme &&
+        'startViewTransition' in document &&
+        next.quality !== 'low' &&
+        !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ) {
+        (
+          document as Document & {
+            startViewTransition: (cb: () => void) => unknown;
+          }
+        ).startViewTransition(() => {
+          document.documentElement.dataset.theme = next.uiTheme;
+          flushSync(() => setConfig(next));
+        });
+        return;
+      }
+      setConfig(next);
+    },
+    [config.uiTheme],
+  );
 
   const handleSaveAuto = useCallback((progress: SavedProgress | null) => {
     writeAutoSave(progress);
@@ -430,6 +455,7 @@ export function App() {
   return (
     <div
       className="app-root"
+      data-theme={config.uiTheme}
       data-quality={config.quality}
       style={{ width: '100%', height: '100%' }}
     >

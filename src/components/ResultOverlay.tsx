@@ -102,7 +102,13 @@ export const ResultOverlay: React.FC<ResultOverlayProps> = ({
             style={{
               left: `${(i * 41) % 98}%`,
               animationDelay: `${(i % 6) * 0.14}s`,
-              backgroundColor: ['#f59e0b', '#10b981', '#3b82f6', '#ec4899', '#8b5cf6'][i % 5],
+              backgroundColor: [
+                'var(--confetti-0, #f59e0b)',
+                'var(--confetti-1, #10b981)',
+                'var(--confetti-2, #3b82f6)',
+                'var(--confetti-3, #ec4899)',
+                'var(--confetti-4, #8b5cf6)',
+              ][i % 5],
             }}
           />
         ))}

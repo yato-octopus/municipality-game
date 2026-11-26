@@ -1,3 +1,5 @@
+import type { UiTheme } from '../types/game';
+
 /**
  * Low-saturation 5-color cartographic pastel palette for Japanese prefectures.
  * Verified against `public/data/japan_prefs.json` so that no two land-adjacent
@@ -17,6 +19,22 @@ export const PREF_MUTED_CONTEXT_PALETTE = [
   '#dee1e8', // Cool Slate Neutral 3
   '#d9dfe9', // Cool Slate Neutral 4
   '#dde1e6', // Cool Slate Neutral 5
+] as const;
+
+export const GOOGLE_PREF_MUTED_PALETTE = [
+  '#f1f3f4',
+  '#e6f4ea',
+  '#e8f0fe',
+  '#fef7e0',
+  '#fce8e6',
+] as const;
+
+export const GOOGLE_PREF_MUTED_CONTEXT_PALETTE = [
+  '#e4e7ec',
+  '#e0e5ec',
+  '#e6e8ee',
+  '#e1e5ec',
+  '#e3e6eb',
 ] as const;
 
 export const PREF_COLOR_INDEX: Record<string, number> = {
@@ -69,8 +87,19 @@ export const PREF_COLOR_INDEX: Record<string, number> = {
   '47': 1, // 沖縄県
 };
 
-export function getPrefMutedFill(prefCode?: string, mutedContext = false): string {
-  const palette = mutedContext ? PREF_MUTED_CONTEXT_PALETTE : PREF_MUTED_PALETTE;
+export function getPrefMutedFill(
+  prefCode?: string,
+  mutedContext = false,
+  uiTheme: UiTheme = 'classic',
+): string {
+  const palette =
+    uiTheme === 'google'
+      ? mutedContext
+        ? GOOGLE_PREF_MUTED_CONTEXT_PALETTE
+        : GOOGLE_PREF_MUTED_PALETTE
+      : mutedContext
+        ? PREF_MUTED_CONTEXT_PALETTE
+        : PREF_MUTED_PALETTE;
   if (!prefCode) return palette[0];
   const normalized = prefCode.startsWith('pref_') ? prefCode.slice(5) : prefCode;
   const idx = PREF_COLOR_INDEX[normalized];

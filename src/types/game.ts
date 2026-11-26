@@ -13,6 +13,8 @@ export type AreaCategory = 'japan' | 'prefecture' | 'municipalities' | 'cities';
 
 export type QuizChoiceLayout = 'bottom' | 'pointing';
 
+export type UiTheme = 'classic' | 'google';
+
 export interface HintAreaOverlay {
   pieceId: string;
   cx: number;
@@ -187,6 +189,7 @@ export interface ConfigState {
   nameOnFix: boolean;
   dragInertia: number;           // 0..1.0
   quizChoiceLayout: QuizChoiceLayout;
+  uiTheme: UiTheme;
 }
 
 export interface ModeBestRecord {

@@ -395,10 +395,10 @@ const PuzzleGameInner: React.FC<PuzzleGameProps> = ({
           <g transform={getPieceTransformAttr(piece, loadedMap)}>
             <path
               d={piece.path}
-              fill="#fb923c"
+              fill="var(--puzzle-ghost-fill, #fb923c)"
               fillOpacity={0.85}
               fillRule="evenodd"
-              stroke="#9a3412"
+              stroke="var(--puzzle-ghost-stroke, #9a3412)"
               strokeWidth={1.6}
               vectorEffect="non-scaling-stroke"
             />
@@ -443,9 +443,9 @@ const PuzzleGameInner: React.FC<PuzzleGameProps> = ({
                 <g transform={getPieceTransformAttr(cur, loadedMap)}>
                   <path
                     d={cur.path}
-                    fill="#f97316"
+                    fill="var(--puzzle-piece-fill, #f97316)"
                     fillRule="evenodd"
-                    stroke="#7c2d12"
+                    stroke="var(--puzzle-piece-stroke, #7c2d12)"
                     strokeWidth={1}
                     vectorEffect="non-scaling-stroke"
                   />
@@ -693,9 +693,9 @@ const PuzzleGameInner: React.FC<PuzzleGameProps> = ({
                       <g transform={transformAttr}>
                         <path
                           d={piece.path}
-                          fill="#f97316"
+                          fill="var(--puzzle-piece-fill, #f97316)"
                           fillRule="evenodd"
-                          stroke="#7c2d12"
+                          stroke="var(--puzzle-piece-stroke, #7c2d12)"
                           strokeWidth={1}
                           vectorEffect="non-scaling-stroke"
                         />

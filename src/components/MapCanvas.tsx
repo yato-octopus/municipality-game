@@ -8,6 +8,7 @@ import type {
   HintAreaOverlay,
   MapPieceItem,
   MapTag,
+  UiTheme,
 } from '../types/game';
 
 interface SafariGestureEvent extends Event {
@@ -53,24 +54,443 @@ interface MapCanvasProps {
   onZoomByFactor: (factor: number, clientX?: number, clientY?: number) => void;
 }
 
-const HYPSOMETRIC_PALETTE = [
-  '#a7d996',
-  '#bfe19b',
-  '#d7e69d',
-  '#ebe098',
-  '#f0cc7f',
-  '#e7b16a',
-  '#d7935b',
-  '#c47a4d',
-];
+interface MapThemePalette {
+  oceanSilhouette: string;
+  oceanHypsometric: string;
+  hypsometric: readonly string[];
+  piece: {
+    silhouetteLand: string;
+    contextSilhouette: string;
+    contextHypsometric: string;
+    borderNormal: string;
+    borderContext: string;
+    completedCleanSilhouetteFill: string;
+    completedCleanSilhouetteStroke: string;
+    completedCleanHypsoFill: string;
+    completedCleanHypsoStroke: string;
+    completedMissedSilhouetteFill: string;
+    completedMissedHypsoFill: string;
+    completedMissedStroke: string;
+    hoverFill: string;
+    hoverStroke: string;
+    selectedFill: string;
+    selectedStroke: string;
+    activeFill: string;
+    activeStroke: string;
+    hintFill: string;
+    hintStroke: string;
+    hintFittedFill: string;
+    hintFittedStroke: string;
+    elevatedHaloStroke: string;
+  };
+  bgPref: {
+    terrainLand: string;
+    silhouetteLand: string;
+    hypsoLand: string;
+    borderNormal: string;
+    borderTinted: string;
+  };
+  prefBorderOverlayStroke: string;
+  insetFrameStroke: string;
+  insetRx: number;
+  insetCaptionFill: string;
+  terrain: {
+    mountain: {
+      defaultFill: string;
+      defaultStroke: string;
+      activeFill: string;
+      activeStroke: string;
+      hintFill: string;
+      hintStroke: string;
+      selectedFill: string;
+      selectedStroke: string;
+      completedFill: string;
+      completedStroke: string;
+      missedFill: string;
+      missedStroke: string;
+      hintFittedFill: string;
+      hintFittedStroke: string;
+      pulseRingHint: string;
+      pulseRingActive: string;
+    };
+    plain: {
+      defaultFill: string;
+      defaultStroke: string;
+      activeFill: string;
+      activeStroke: string;
+      selectedFill: string;
+      selectedStroke: string;
+      missedFill: string;
+      missedStroke: string;
+      completedFill: string;
+      completedStroke: string;
+      hintFill: string;
+      hintStroke: string;
+      hintFittedFill: string;
+      hintFittedStroke: string;
+    };
+    lake: {
+      defaultFill: string;
+      defaultStroke: string;
+      completedFill: string;
+      completedStroke: string;
+      activeFill: string;
+      activeStroke: string;
+      selectedFill: string;
+      selectedStroke: string;
+      missedFill: string;
+      missedStroke: string;
+      hintFill: string;
+      hintStroke: string;
+      hintFittedFill: string;
+      hintFittedStroke: string;
+      smallRingHint: string;
+      smallRingActive: string;
+    };
+    river: {
+      defaultStroke: string;
+      completedStroke: string;
+      selectedStroke: string;
+      activeStroke: string;
+      hintStroke: string;
+      missedStroke: string;
+      hintFittedStroke: string;
+    };
+    mountains: {
+      zoneDefaultFill: string;
+      zoneDefaultStroke: string;
+      zoneCompletedStroke: string;
+      zoneActiveStroke: string;
+      zoneHintStroke: string;
+      zoneSelectedFill: string;
+      zoneSelectedStroke: string;
+      zoneMissedFill: string;
+      zoneMissedStroke: string;
+      zoneHintFittedFill: string;
+      zoneHintFittedStroke: string;
+      ridgeDefaultStroke: string;
+      ridgeActiveStroke: string;
+      ridgeHintStroke: string;
+      ridgeSelectedStroke: string;
+      ridgeMissedStroke: string;
+      ridgeHintFittedStroke: string;
+    };
+  };
+  hint1Fill: string;
+  hint1Stroke: string;
+  hint1LabelFill: string;
+  hint2PulseFill: string;
+  hint2PulseStroke: string;
+  nonTerrainPulseHint: string;
+  nonTerrainPulseActive: string;
+  capitalPinStroke: string;
+  capitalPinFill: string;
+  tagDotFill: string;
+  labelDefaultFill: string;
+  labelSelectedFill: string;
+  labelHintFittedFill: string;
+}
 
-function getHypsometricColor(piece: MapPieceItem): string {
+const MAP_PALETTES: Record<UiTheme, MapThemePalette> = {
+  classic: {
+    oceanSilhouette: '#dcebfa',
+    oceanHypsometric: '#cfe5f7',
+    hypsometric: [
+      '#a7d996',
+      '#bfe19b',
+      '#d7e69d',
+      '#ebe098',
+      '#f0cc7f',
+      '#e7b16a',
+      '#d7935b',
+      '#c47a4d',
+    ],
+    piece: {
+      silhouetteLand: '#fbfaf6',
+      contextSilhouette: '#e5e7eb',
+      contextHypsometric: '#d5dbe2',
+      borderNormal: '#475569',
+      borderContext: '#94a3b8',
+      completedCleanSilhouetteFill: '#bbf7d0',
+      completedCleanSilhouetteStroke: '#0f766e',
+      completedCleanHypsoFill: '#10b981',
+      completedCleanHypsoStroke: '#065f46',
+      completedMissedSilhouetteFill: '#fde68a',
+      completedMissedHypsoFill: '#fbbf24',
+      completedMissedStroke: '#b45309',
+      hoverFill: '#fde68a',
+      hoverStroke: '#d97706',
+      selectedFill: '#bae6fd',
+      selectedStroke: '#0284c7',
+      activeFill: '#fed7aa',
+      activeStroke: '#ea580c',
+      hintFill: '#fca5a5',
+      hintStroke: '#dc2626',
+      hintFittedFill: '#86efac',
+      hintFittedStroke: '#059669',
+      elevatedHaloStroke: '#ffffff',
+    },
+    bgPref: {
+      terrainLand: '#f8f7f2',
+      silhouetteLand: '#ecebe4',
+      hypsoLand: '#dfe4d5',
+      borderNormal: '#94a3b8',
+      borderTinted: '#475569',
+    },
+    prefBorderOverlayStroke: '#334155',
+    insetFrameStroke: '#475569',
+    insetRx: 1.5,
+    insetCaptionFill: '#475569',
+    terrain: {
+      mountain: {
+        defaultFill: '#b45309',
+        defaultStroke: '#78350f',
+        activeFill: '#ea580c',
+        activeStroke: '#9a3412',
+        hintFill: '#dc2626',
+        hintStroke: '#7f1d1d',
+        selectedFill: '#0284c7',
+        selectedStroke: '#0c4a6e',
+        completedFill: '#15803d',
+        completedStroke: '#14532d',
+        missedFill: '#d97706',
+        missedStroke: '#92400e',
+        hintFittedFill: '#10b981',
+        hintFittedStroke: '#059669',
+        pulseRingHint: '#dc2626',
+        pulseRingActive: '#ea580c',
+      },
+      plain: {
+        defaultFill: '#65a30d',
+        defaultStroke: '#4d7c0f',
+        activeFill: '#84cc16',
+        activeStroke: '#ea580c',
+        selectedFill: '#38bdf8',
+        selectedStroke: '#0284c7',
+        missedFill: '#f59e0b',
+        missedStroke: '#b45309',
+        completedFill: '#22c55e',
+        completedStroke: '#15803d',
+        hintFill: '#f97316',
+        hintStroke: '#dc2626',
+        hintFittedFill: '#10b981',
+        hintFittedStroke: '#059669',
+      },
+      lake: {
+        defaultFill: '#0284c7',
+        defaultStroke: '#0369a1',
+        completedFill: '#0284c7',
+        completedStroke: '#0c4a6e',
+        activeFill: '#0ea5e9',
+        activeStroke: '#ea580c',
+        selectedFill: '#38bdf8',
+        selectedStroke: '#0369a1',
+        missedFill: '#f59e0b',
+        missedStroke: '#b45309',
+        hintFill: '#38bdf8',
+        hintStroke: '#dc2626',
+        hintFittedFill: '#10b981',
+        hintFittedStroke: '#059669',
+        smallRingHint: '#dc2626',
+        smallRingActive: '#ea580c',
+      },
+      river: {
+        defaultStroke: '#2563eb',
+        completedStroke: '#1d4ed8',
+        selectedStroke: '#0284c7',
+        activeStroke: '#ea580c',
+        hintStroke: '#dc2626',
+        missedStroke: '#d97706',
+        hintFittedStroke: '#059669',
+      },
+      mountains: {
+        zoneDefaultFill: '#9a3412',
+        zoneDefaultStroke: '#9a3412',
+        zoneCompletedStroke: '#7c2d12',
+        zoneActiveStroke: '#ea580c',
+        zoneHintStroke: '#dc2626',
+        zoneSelectedFill: '#0284c7',
+        zoneSelectedStroke: '#0284c7',
+        zoneMissedFill: '#d97706',
+        zoneMissedStroke: '#b45309',
+        zoneHintFittedFill: '#10b981',
+        zoneHintFittedStroke: '#059669',
+        ridgeDefaultStroke: '#7c2d12',
+        ridgeActiveStroke: '#ea580c',
+        ridgeHintStroke: '#dc2626',
+        ridgeSelectedStroke: '#0284c7',
+        ridgeMissedStroke: '#b45309',
+        ridgeHintFittedStroke: '#059669',
+      },
+    },
+    hint1Fill: 'rgba(245, 158, 11, 0.16)',
+    hint1Stroke: '#d97706',
+    hint1LabelFill: '#b45309',
+    hint2PulseFill: 'rgba(16, 185, 129, 0.14)',
+    hint2PulseStroke: '#059669',
+    nonTerrainPulseHint: '#dc2626',
+    nonTerrainPulseActive: '#ea580c',
+    capitalPinStroke: '#dc2626',
+    capitalPinFill: '#dc2626',
+    tagDotFill: '#7c3aed',
+    labelDefaultFill: '#0f172a',
+    labelSelectedFill: '#0369a1',
+    labelHintFittedFill: '#065f46',
+  },
+  google: {
+    oceanSilhouette: '#c8e4fd',
+    oceanHypsometric: '#bddbf7',
+    hypsometric: [
+      '#e6f4ea',
+      '#ceead6',
+      '#d7ecc8',
+      '#f2ebd3',
+      '#fce8b2',
+      '#fad2a4',
+      '#f3bf96',
+      '#e2a882',
+    ],
+    piece: {
+      silhouetteLand: '#ffffff',
+      contextSilhouette: '#eceff1',
+      contextHypsometric: '#e0e4e8',
+      borderNormal: '#80868b',
+      borderContext: '#bdc1c6',
+      completedCleanSilhouetteFill: '#ceead6',
+      completedCleanSilhouetteStroke: '#137333',
+      completedCleanHypsoFill: '#1e8e3e',
+      completedCleanHypsoStroke: '#0d652d',
+      completedMissedSilhouetteFill: '#feefc3',
+      completedMissedHypsoFill: '#f9ab00',
+      completedMissedStroke: '#b06000',
+      hoverFill: '#d2e3fc',
+      hoverStroke: '#1a73e8',
+      selectedFill: '#d2e3fc',
+      selectedStroke: '#1a73e8',
+      activeFill: '#fce8e6',
+      activeStroke: '#ea4335',
+      hintFill: '#f9d2ce',
+      hintStroke: '#d93025',
+      hintFittedFill: '#a8dab5',
+      hintFittedStroke: '#1e8e3e',
+      elevatedHaloStroke: '#ffffff',
+    },
+    bgPref: {
+      terrainLand: '#f8f9fa',
+      silhouetteLand: '#eff1f3',
+      hypsoLand: '#e8ece6',
+      borderNormal: '#bdc1c6',
+      borderTinted: '#80868b',
+    },
+    prefBorderOverlayStroke: '#5f6368',
+    insetFrameStroke: '#dadce0',
+    insetRx: 6,
+    insetCaptionFill: '#5f6368',
+    terrain: {
+      mountain: {
+        defaultFill: '#8d6e63',
+        defaultStroke: '#5d4037',
+        activeFill: '#ea4335',
+        activeStroke: '#a50e0e',
+        hintFill: '#d93025',
+        hintStroke: '#7f1d1d',
+        selectedFill: '#1a73e8',
+        selectedStroke: '#174ea6',
+        completedFill: '#1e8e3e',
+        completedStroke: '#0d652d',
+        missedFill: '#f9ab00',
+        missedStroke: '#764200',
+        hintFittedFill: '#34a853',
+        hintFittedStroke: '#137333',
+        pulseRingHint: '#d93025',
+        pulseRingActive: '#ea4335',
+      },
+      plain: {
+        defaultFill: '#34a853',
+        defaultStroke: '#1e8e3e',
+        activeFill: '#81c995',
+        activeStroke: '#ea4335',
+        selectedFill: '#4285f4',
+        selectedStroke: '#1a73e8',
+        missedFill: '#fbbc04',
+        missedStroke: '#b06000',
+        completedFill: '#1e8e3e',
+        completedStroke: '#137333',
+        hintFill: '#ea4335',
+        hintStroke: '#d93025',
+        hintFittedFill: '#34a853',
+        hintFittedStroke: '#137333',
+      },
+      lake: {
+        defaultFill: '#1a73e8',
+        defaultStroke: '#174ea6',
+        completedFill: '#1a73e8',
+        completedStroke: '#174ea6',
+        activeFill: '#4285f4',
+        activeStroke: '#ea4335',
+        selectedFill: '#4285f4',
+        selectedStroke: '#174ea6',
+        missedFill: '#fbbc04',
+        missedStroke: '#b06000',
+        hintFill: '#4285f4',
+        hintStroke: '#d93025',
+        hintFittedFill: '#34a853',
+        hintFittedStroke: '#137333',
+        smallRingHint: '#d93025',
+        smallRingActive: '#ea4335',
+      },
+      river: {
+        defaultStroke: '#4285f4',
+        completedStroke: '#1a73e8',
+        selectedStroke: '#1557b0',
+        activeStroke: '#ea4335',
+        hintStroke: '#d93025',
+        missedStroke: '#f29900',
+        hintFittedStroke: '#1e8e3e',
+      },
+      mountains: {
+        zoneDefaultFill: '#8d6e63',
+        zoneDefaultStroke: '#795548',
+        zoneCompletedStroke: '#795548',
+        zoneActiveStroke: '#ea4335',
+        zoneHintStroke: '#d93025',
+        zoneSelectedFill: '#1a73e8',
+        zoneSelectedStroke: '#1a73e8',
+        zoneMissedFill: '#f29900',
+        zoneMissedStroke: '#f29900',
+        zoneHintFittedFill: '#1e8e3e',
+        zoneHintFittedStroke: '#1e8e3e',
+        ridgeDefaultStroke: '#6d4c41',
+        ridgeActiveStroke: '#ea4335',
+        ridgeHintStroke: '#d93025',
+        ridgeSelectedStroke: '#1a73e8',
+        ridgeMissedStroke: '#f29900',
+        ridgeHintFittedStroke: '#1e8e3e',
+      },
+    },
+    hint1Fill: 'rgba(251, 188, 4, 0.16)',
+    hint1Stroke: '#f29900',
+    hint1LabelFill: '#764200',
+    hint2PulseFill: 'rgba(30, 142, 62, 0.16)',
+    hint2PulseStroke: '#1e8e3e',
+    nonTerrainPulseHint: '#d93025',
+    nonTerrainPulseActive: '#ea4335',
+    capitalPinStroke: '#ea4335',
+    capitalPinFill: '#ea4335',
+    tagDotFill: '#8430ce',
+    labelDefaultFill: '#202124',
+    labelSelectedFill: '#1a73e8',
+    labelHintFittedFill: '#137333',
+  },
+};
+
+function getHypsometricColor(piece: MapPieceItem, palette: MapThemePalette): string {
   let h = 0;
   for (let i = 0; i < piece.id.length; i += 1) {
     h = (h * 31 + piece.id.charCodeAt(i)) | 0;
   }
-  const idx = Math.abs(h) % HYPSOMETRIC_PALETTE.length;
-  return HYPSOMETRIC_PALETTE[idx];
+  const idx = Math.abs(h) % palette.hypsometric.length;
+  return palette.hypsometric[idx];
 }
 
 type TerrainCategory = GeographyFeature['category'];
@@ -170,6 +590,9 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
   const prefTooltipRef = useRef<HTMLDivElement | null>(null);
   const [svgNode, setSvgNode] = useState<SVGSVGElement | null>(null);
   const [svgSize, setSvgSize] = useState<{ w: number; h: number }>({ w: 1200, h: 720 });
+  const isGoogle = config.uiTheme === 'google';
+  const uiTheme: UiTheme = isGoogle ? 'google' : 'classic';
+  const palette = MAP_PALETTES[uiTheme];
 
   const hidePrefTooltip = useCallback(() => {
     const tip = prefTooltipRef.current;
@@ -600,60 +1023,67 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
     const isSelected = selectedPieceId === piece.id;
     const isHover = hoverTargetId === piece.id;
     const isInPool = poolIdSet.has(piece.id);
+    const p = palette.piece;
 
     let fill = config.silhouette
       ? enablePrefTint
-        ? getPrefMutedFill(piece.prefCode, false)
-        : '#fbfaf6'
-      : getHypsometricColor(piece);
-    let stroke = config.showBorder ? '#475569' : fill;
+        ? getPrefMutedFill(piece.prefCode, false, uiTheme)
+        : p.silhouetteLand
+      : getHypsometricColor(piece, palette);
+    let stroke = config.showBorder ? p.borderNormal : fill;
     let strokeWidth = config.showBorder ? 0.9 : 0.65;
 
     if (!isInPool && contextPieces.length > activePoolPieces.length) {
       // Context piece outside current geographic sub-region or non-city town/village in cities mode
       fill = config.silhouette
         ? enablePrefTint
-          ? getPrefMutedFill(piece.prefCode, true)
-          : '#e5e7eb'
-        : '#d5dbe2';
-      stroke = config.showBorder ? '#94a3b8' : fill;
+          ? getPrefMutedFill(piece.prefCode, true, uiTheme)
+          : p.contextSilhouette
+        : p.contextHypsometric;
+      stroke = config.showBorder ? p.borderContext : fill;
       strokeWidth = enablePrefTint && config.silhouette ? 0.55 : 0.6;
     }
 
     if (isCompleted) {
       if (isMissedCompleted) {
-        fill = config.silhouette ? '#fde68a' : '#fbbf24';
-        stroke = config.showBorder ? '#b45309' : fill;
+        fill = config.silhouette
+          ? p.completedMissedSilhouetteFill
+          : p.completedMissedHypsoFill;
+        stroke = config.showBorder ? p.completedMissedStroke : fill;
         strokeWidth = config.showBorder ? 1.25 : 0.8;
       } else {
-        fill = config.silhouette ? '#bbf7d0' : '#10b981';
-        stroke = config.showBorder ? (config.silhouette ? '#0f766e' : '#065f46') : fill;
+        fill = config.silhouette ? p.completedCleanSilhouetteFill : p.completedCleanHypsoFill;
+        stroke = config.showBorder
+          ? config.silhouette
+            ? p.completedCleanSilhouetteStroke
+            : p.completedCleanHypsoStroke
+          : fill;
         strokeWidth = config.showBorder ? 1.1 : 0.75;
       }
     }
     if (isHover) {
-      fill = '#fde68a';
-      stroke = '#d97706';
+      fill = p.hoverFill;
+      stroke = p.hoverStroke;
       strokeWidth = 1.9;
     }
     if (isSelected) {
-      fill = '#bae6fd';
-      stroke = '#0284c7';
+      fill = p.selectedFill;
+      stroke = p.selectedStroke;
       strokeWidth = 1.8;
     }
     if (isActive) {
-      fill = '#fed7aa';
-      stroke = '#ea580c';
+      fill = p.activeFill;
+      stroke = p.activeStroke;
       strokeWidth = 2.1;
     }
     if (isHint) {
-      fill = '#fca5a5';
-      stroke = '#dc2626';
+      fill = p.hintFill;
+      stroke = p.hintStroke;
       strokeWidth = 2.4;
     }
     if (isHintFitted) {
-      fill = '#86efac';
-      stroke = '#059669';
+      fill = p.hintFittedFill;
+      stroke = p.hintFittedStroke;
       strokeWidth = 2.4;
     }
 
@@ -705,7 +1135,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
           cy={cy}
           r={r}
           fill="transparent"
-          stroke={isHover ? '#d97706' : 'none'}
+          stroke={isHover ? palette.piece.hoverStroke : 'none'}
           strokeWidth={isHover ? 1.3 : 0}
           vectorEffect="non-scaling-stroke"
           className="map-piece-clickable"
@@ -785,7 +1215,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
             <path
               d={piece.path}
               fill="none"
-              stroke="#ffffff"
+              stroke={palette.piece.elevatedHaloStroke}
               strokeOpacity={0.96}
               strokeWidth={5.2}
               strokeLinejoin="round"
@@ -793,9 +1223,9 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
             />
             <path
               d={piece.path}
-              fill="#86efac"
+              fill={palette.piece.hintFittedFill}
               fillRule="evenodd"
-              stroke="#059669"
+              stroke={palette.piece.hintFittedStroke}
               strokeWidth={2.4}
               strokeLinejoin="round"
               vectorEffect="non-scaling-stroke"
@@ -809,7 +1239,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
             <path
               d={piece.path}
               fill="none"
-              stroke="#ffffff"
+              stroke={palette.piece.elevatedHaloStroke}
               strokeOpacity={0.85}
               strokeWidth={st.strokeWidth + 2.0}
               strokeLinejoin="round"
@@ -832,19 +1262,20 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
 
   const renderBgPrefPath = (pref: MapPieceItem, keyPrefix: string) => {
     const useTint = enablePrefTint && config.silhouette && !isTerrainMode;
+    const bg = palette.bgPref;
     const fill = isTerrainMode
-      ? '#f8f7f2'
+      ? bg.terrainLand
       : useTint
-        ? getPrefMutedFill(pref.prefCode, false)
+        ? getPrefMutedFill(pref.prefCode, false, uiTheme)
         : config.silhouette
-          ? '#ecebe4'
-          : '#dfe4d5';
+          ? bg.silhouetteLand
+          : bg.hypsoLand;
     const stroke = config.showBorder
       ? isTerrainMode
-        ? '#94a3b8'
+        ? bg.borderNormal
         : useTint
-          ? '#475569'
-          : '#94a3b8'
+          ? bg.borderTinted
+          : bg.borderNormal
       : fill;
     const strokeWidth = isTerrainMode ? 0.8 : useTint ? 0.9 : 0.7;
     return (
@@ -935,6 +1366,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
             cached?.rawSpan ?? Math.max(f.bbox[2] - f.bbox[0], f.bbox[3] - f.bbox[1]);
 
           if (cat === 'mountain') {
+            const mt = palette.terrain.mountain;
             const [cx, cy] = f.center;
             const hw = isHintFitted
               ? baseMountainHw * 1.24
@@ -953,32 +1385,32 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
             const snowPts = `${cx.toFixed(2)},${apexY.toFixed(2)} ${(cx - sW).toFixed(2)},${sY.toFixed(2)} ${(cx - sW * 0.32).toFixed(2)},${sYLow.toFixed(2)} ${cx.toFixed(2)},${(apexY + h * 0.34).toFixed(2)} ${(cx + sW * 0.32).toFixed(2)},${sYLow.toFixed(2)} ${(cx + sW).toFixed(2)},${sY.toFixed(2)}`;
 
             const fill = isHintFitted
-              ? '#10b981'
+              ? mt.hintFittedFill
               : isHint
-                ? '#dc2626'
+                ? mt.hintFill
                 : isActive
-                  ? '#ea580c'
+                  ? mt.activeFill
                   : isSelected
-                    ? '#0284c7'
+                    ? mt.selectedFill
                     : isMissedCompleted
-                      ? '#d97706'
+                      ? mt.missedFill
                       : isCompleted
-                        ? '#15803d'
-                        : '#b45309';
+                        ? mt.completedFill
+                        : mt.defaultFill;
             const fillOpacity = highlighted || isSelected ? 1 : isCompleted ? 0.96 : 0.86;
             const outline = isHintFitted
-              ? '#059669'
+              ? mt.hintFittedStroke
               : isHint
-                ? '#7f1d1d'
+                ? mt.hintStroke
                 : isActive
-                  ? '#9a3412'
+                  ? mt.activeStroke
                   : isSelected
-                    ? '#0c4a6e'
+                    ? mt.selectedStroke
                     : isMissedCompleted
-                      ? '#92400e'
+                      ? mt.missedStroke
                       : isCompleted
-                        ? '#14532d'
-                        : '#78350f';
+                        ? mt.completedStroke
+                        : mt.defaultStroke;
 
             return (
               <g
@@ -1023,7 +1455,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                     cy={cy}
                     r={Math.max(hw * 2.0, viewBox.w * 0.022)}
                     fill="none"
-                    stroke={isHint ? '#dc2626' : '#ea580c'}
+                    stroke={isHint ? mt.pulseRingHint : mt.pulseRingActive}
                     strokeWidth={2.0}
                     strokeDasharray="4 3"
                     vectorEffect="non-scaling-stroke"
@@ -1036,19 +1468,20 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
 
           if (cat === 'plain') {
             if (!hasPath && pts.length < 3) return null;
+            const pl = palette.terrain.plain;
             const fill = isHintFitted
-              ? '#10b981'
+              ? pl.hintFittedFill
               : isHint
-                ? '#f97316'
+                ? pl.hintFill
                 : isActive
-                  ? '#84cc16'
+                  ? pl.activeFill
                   : isSelected
-                    ? '#38bdf8'
+                    ? pl.selectedFill
                     : isMissedCompleted
-                      ? '#f59e0b'
+                      ? pl.missedFill
                       : isCompleted
-                        ? '#22c55e'
-                        : '#65a30d';
+                        ? pl.completedFill
+                        : pl.defaultFill;
             const fillOpacity = isHintFitted
               ? 0.62
               : isHint
@@ -1061,18 +1494,18 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                       ? 0.52
                       : 0.34;
             const stroke = isHintFitted
-              ? '#059669'
+              ? pl.hintFittedStroke
               : isHint
-                ? '#dc2626'
+                ? pl.hintStroke
                 : isActive
-                  ? '#ea580c'
+                  ? pl.activeStroke
                   : isSelected
-                    ? '#0284c7'
+                    ? pl.selectedStroke
                     : isMissedCompleted
-                      ? '#b45309'
+                      ? pl.missedStroke
                       : isCompleted
-                        ? '#15803d'
-                        : '#4d7c0f';
+                        ? pl.completedStroke
+                        : pl.defaultStroke;
             const strokeOpacity = highlighted || isSelected ? 1 : isCompleted ? 0.88 : 0.62;
             const strokeWidth = isHintFitted
               ? 2.9
@@ -1148,6 +1581,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
 
           if (cat === 'lake') {
             if (!hasPath && pts.length < 3) return null;
+            const lk = palette.terrain.lake;
             const isSmallLake = rawSpan < viewBox.w * 0.04;
             const isVerySmallLake = rawSpan < Math.max(12, viewBox.w * 0.025);
             const showHalo = highlighted || isSelected || isVerySmallLake;
@@ -1179,16 +1613,18 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                   : 0.6;
 
             const fill = isHintFitted
-              ? '#10b981'
+              ? lk.hintFittedFill
               : isHint
-                ? '#38bdf8'
+                ? lk.hintFill
                 : isActive
-                  ? '#0ea5e9'
+                  ? lk.activeFill
                   : isSelected
-                    ? '#38bdf8'
+                    ? lk.selectedFill
                     : isMissedCompleted
-                      ? '#f59e0b'
-                      : '#0284c7';
+                      ? lk.missedFill
+                      : isCompleted
+                        ? lk.completedFill
+                        : lk.defaultFill;
             const fillOpacity = isHintFitted
               ? 0.98
               : isHint
@@ -1201,18 +1637,18 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                       ? 0.9
                       : 0.76;
             const stroke = isHintFitted
-              ? '#059669'
+              ? lk.hintFittedStroke
               : isHint
-                ? '#dc2626'
+                ? lk.hintStroke
                 : isActive
-                  ? '#ea580c'
+                  ? lk.activeStroke
                   : isSelected
-                    ? '#0369a1'
+                    ? lk.selectedStroke
                     : isMissedCompleted
-                      ? '#b45309'
+                      ? lk.missedStroke
                       : isCompleted
-                        ? '#0c4a6e'
-                        : '#0369a1';
+                        ? lk.completedStroke
+                        : lk.defaultStroke;
             const strokeOpacity = highlighted || isSelected ? 1 : isCompleted ? 0.95 : 0.86;
             const strokeWidth = isHintFitted
               ? isSmallLake
@@ -1307,7 +1743,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                       Math.max(4.5, viewBox.w * 0.02),
                     )}
                     fill="none"
-                    stroke={isHint ? '#dc2626' : '#ea580c'}
+                    stroke={isHint ? lk.smallRingHint : lk.smallRingActive}
                     strokeWidth={2.0}
                     strokeDasharray="4 3"
                     vectorEffect="non-scaling-stroke"
@@ -1320,6 +1756,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
 
           if (cat === 'river') {
             if (!hasPath && pts.length < 2) return null;
+            const rv = palette.terrain.river;
             const casingWidth = isHintFitted
               ? 7.4
               : isHint
@@ -1333,18 +1770,18 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                       : 2.8;
             const casingOpacity = highlighted ? 0.96 : isSelected ? 0.92 : isCompleted ? 0.82 : 0.55;
             const stroke = isHintFitted
-              ? '#059669'
+              ? rv.hintFittedStroke
               : isHint
-                ? '#dc2626'
+                ? rv.hintStroke
                 : isActive
-                  ? '#ea580c'
+                  ? rv.activeStroke
                   : isSelected
-                    ? '#0284c7'
+                    ? rv.selectedStroke
                     : isMissedCompleted
-                      ? '#d97706'
+                      ? rv.missedStroke
                       : isCompleted
-                        ? '#1d4ed8'
-                        : '#2563eb';
+                        ? rv.completedStroke
+                        : rv.defaultStroke;
             const strokeOpacity = highlighted || isSelected ? 1 : isCompleted ? 0.95 : 0.72;
             const strokeWidth = isHintFitted
               ? 4.2
@@ -1439,13 +1876,14 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
 
           // mountains (山脈・山地・高地)
           if (!hasPath && pts.length < 2) return null;
+          const mts = palette.terrain.mountains;
           const zoneFill = isHintFitted
-            ? '#10b981'
+            ? mts.zoneHintFittedFill
             : isSelected
-              ? '#0284c7'
+              ? mts.zoneSelectedFill
               : isMissedCompleted
-                ? '#d97706'
-                : '#9a3412';
+                ? mts.zoneMissedFill
+                : mts.zoneDefaultFill;
           const zoneFillOpacity = isHintFitted
             ? 0.48
             : isHint
@@ -1458,18 +1896,18 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                     ? 0.36
                     : 0.24;
           const zoneStroke = isHintFitted
-            ? '#059669'
+            ? mts.zoneHintFittedStroke
             : isHint
-              ? '#dc2626'
+              ? mts.zoneHintStroke
               : isActive
-                ? '#ea580c'
+                ? mts.zoneActiveStroke
                 : isSelected
-                  ? '#0284c7'
+                  ? mts.zoneSelectedStroke
                   : isMissedCompleted
-                    ? '#b45309'
+                    ? mts.zoneMissedStroke
                     : isCompleted
-                      ? '#7c2d12'
-                      : '#9a3412';
+                      ? mts.zoneCompletedStroke
+                      : mts.zoneDefaultStroke;
           const zoneStrokeOpacity = highlighted || isSelected ? 0.95 : isCompleted ? 0.58 : 0.4;
           const zoneStrokeWidth = isHintFitted
             ? 2.2
@@ -1484,16 +1922,16 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                     : 0.9;
 
           const ridgeStroke = isHintFitted
-            ? '#059669'
+            ? mts.ridgeHintFittedStroke
             : isHint
-              ? '#dc2626'
+              ? mts.ridgeHintStroke
               : isActive
-                ? '#ea580c'
+                ? mts.ridgeActiveStroke
                 : isSelected
-                  ? '#0284c7'
+                  ? mts.ridgeSelectedStroke
                   : isMissedCompleted
-                    ? '#b45309'
-                    : '#7c2d12';
+                    ? mts.ridgeMissedStroke
+                    : mts.ridgeDefaultStroke;
           const ridgeOpacity = highlighted || isSelected ? 1 : isCompleted ? 0.92 : 0.68;
           const ridgeWidth = isHintFitted
             ? 4.0
@@ -1739,7 +2177,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
         preserveAspectRatio="xMidYMid meet"
         className="map-canvas-svg"
         style={{
-          background: config.silhouette ? '#dcebfa' : '#cfe5f7',
+          background: config.silhouette ? palette.oceanSilhouette : palette.oceanHypsometric,
           touchAction: 'none',
         }}
         onPointerDown={handlePointerDown}
@@ -1776,7 +2214,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                   key={`pref-border-${pref.id}`}
                   d={pref.path}
                   fill="none"
-                  stroke="#334155"
+                  stroke={palette.prefBorderOverlayStroke}
                   strokeWidth={1.35}
                   strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
@@ -1813,11 +2251,11 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                 y={ins.box[1]}
                 width={w}
                 height={h}
-                fill={config.silhouette ? '#dcebfa' : '#cfe5f7'}
-                stroke="#475569"
+                fill={config.silhouette ? palette.oceanSilhouette : palette.oceanHypsometric}
+                stroke={palette.insetFrameStroke}
                 strokeWidth={1.1}
                 vectorEffect="non-scaling-stroke"
-                rx={1.5}
+                rx={palette.insetRx}
               />
               {insetBgPieces.length > 0 && (
                 <g clipPath={`url(#${ins.clipId})`}>
@@ -1839,7 +2277,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                         key={`inset-pref-border-${pref.id}`}
                         d={pref.path}
                         fill="none"
-                        stroke="#334155"
+                        stroke={palette.prefBorderOverlayStroke}
                         strokeWidth={1.35}
                         strokeLinejoin="round"
                         vectorEffect="non-scaling-stroke"
@@ -1860,7 +2298,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                 x={ins.box[0] + headerFontSize * 0.45}
                 y={ins.box[1] + headerFontSize * 1.2}
                 fontSize={headerFontSize}
-                fill="#475569"
+                fill={palette.insetCaptionFill}
                 fontWeight={600}
                 pointerEvents="none"
               >
@@ -1881,8 +2319,8 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
               cx={hintArea.cx}
               cy={hintArea.cy}
               r={hintArea.r}
-              fill="rgba(245, 158, 11, 0.16)"
-              stroke="#d97706"
+              fill={palette.hint1Fill}
+              stroke={palette.hint1Stroke}
               strokeWidth={2.6}
               strokeDasharray="8 5"
               vectorEffect="non-scaling-stroke"
@@ -1894,7 +2332,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
               dominantBaseline="auto"
               fontSize={hint1FontSize}
               fontWeight={700}
-              fill="#b45309"
+              fill={palette.hint1LabelFill}
               stroke="#ffffff"
               strokeWidth={hint1FontSize * 0.28}
               paintOrder="stroke"
@@ -1931,8 +2369,8 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                   cx={p.center[0]}
                   cy={p.center[1]}
                   r={pulseR}
-                  fill="rgba(16, 185, 129, 0.14)"
-                  stroke="#059669"
+                  fill={palette.hint2PulseFill}
+                  stroke={palette.hint2PulseStroke}
                   strokeWidth={2.4}
                   vectorEffect="non-scaling-stroke"
                 />
@@ -1954,7 +2392,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                 cy={p.center[1]}
                 r={Math.max(3.5, viewBox.w * 0.022)}
                 fill="none"
-                stroke={hintPieceId ? '#dc2626' : '#ea580c'}
+                stroke={hintPieceId ? palette.nonTerrainPulseHint : palette.nonTerrainPulseActive}
                 strokeWidth={1.8}
                 strokeDasharray="4 3"
                 vectorEffect="non-scaling-stroke"
@@ -1974,7 +2412,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                   r={capitalPinR * 1.45}
                   fill="#ffffff"
                   fillOpacity={0.92}
-                  stroke="#dc2626"
+                  stroke={palette.capitalPinStroke}
                   strokeWidth={1.1}
                   vectorEffect="non-scaling-stroke"
                 />
@@ -1982,7 +2420,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                   cx={p.capitalCenter[0]}
                   cy={p.capitalCenter[1]}
                   r={capitalPinR * 0.62}
-                  fill="#dc2626"
+                  fill={palette.capitalPinFill}
                 />
               </g>
             ) : null,
@@ -1997,7 +2435,7 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
                 cx={p.center[0]}
                 cy={p.center[1] - Math.max(1.0, viewBox.w * 0.0055)}
                 r={Math.max(0.85, viewBox.w * 0.0036)}
-                fill="#7c3aed"
+                fill={palette.tagDotFill}
                 stroke="#ffffff"
                 strokeWidth={0.75}
                 vectorEffect="non-scaling-stroke"
@@ -2016,7 +2454,13 @@ const MapCanvasInner: React.FC<MapCanvasProps> = ({
             dominantBaseline="central"
             fontSize={item.fontSize}
             fontWeight={item.isHintFitted || item.isSelected ? 800 : 600}
-            fill={item.isHintFitted ? '#065f46' : item.isSelected ? '#0369a1' : '#0f172a'}
+            fill={
+              item.isHintFitted
+                ? palette.labelHintFittedFill
+                : item.isSelected
+                  ? palette.labelSelectedFill
+                  : palette.labelDefaultFill
+            }
             stroke={item.isHintFitted ? 'rgba(255,255,255,0.98)' : 'rgba(255,255,255,0.92)'}
             strokeWidth={item.fontSize * (item.isHintFitted ? 0.34 : 0.28)}
             paintOrder="stroke"

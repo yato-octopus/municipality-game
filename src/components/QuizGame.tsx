@@ -954,12 +954,12 @@ const QuizGameInner: React.FC<QuizGameProps> = ({
                 const isHovered =
                   !isWrong && !isElim && !isCorrect && hoveredChoiceId === card.choice.id;
                 const strokeColor = isCorrect
-                  ? '#059669'
+                  ? 'var(--pointing-line-correct, #059669)'
                   : isHovered
-                    ? '#0284c7'
+                    ? 'var(--pointing-line-hover, #0284c7)'
                     : isWrong || isElim
-                      ? '#cbd5e1'
-                      : '#d97706';
+                      ? 'var(--pointing-line-muted, #cbd5e1)'
+                      : 'var(--pointing-line-default, #d97706)';
                 const opacity = isWrong || isElim ? 0.4 : isHovered || isCorrect ? 1 : 0.88;
                 return (
                   <g key={`line-${card.choice.id}`} opacity={opacity}>
@@ -968,7 +968,7 @@ const QuizGameInner: React.FC<QuizGameProps> = ({
                       y1={card.attachY}
                       x2={pointingLayout.lineTargetX}
                       y2={pointingLayout.lineTargetY}
-                      stroke="#ffffff"
+                      stroke="var(--pointing-line-casing, #ffffff)"
                       strokeWidth={isCorrect || isHovered ? 5.2 : 3.6}
                       strokeLinecap="round"
                     />
@@ -991,16 +991,20 @@ const QuizGameInner: React.FC<QuizGameProps> = ({
                     cx={pointingLayout.anchorX}
                     cy={pointingLayout.anchorY}
                     r={8.5}
-                    fill="rgba(234, 88, 12, 0.22)"
-                    stroke="#ffffff"
+                    fill="var(--pointing-anchor-ring, rgba(234, 88, 12, 0.22))"
+                    stroke="var(--pointing-line-casing, #ffffff)"
                     strokeWidth={2}
                   />
                   <circle
                     cx={pointingLayout.anchorX}
                     cy={pointingLayout.anchorY}
                     r={4.8}
-                    fill={feedback === 'ok' || revealed ? '#059669' : '#ea580c'}
-                    stroke="#ffffff"
+                    fill={
+                      feedback === 'ok' || revealed
+                        ? 'var(--pointing-anchor-ok, #059669)'
+                        : 'var(--pointing-anchor-fill, #ea580c)'
+                    }
+                    stroke="var(--pointing-line-casing, #ffffff)"
                     strokeWidth={2}
                   />
                 </g>

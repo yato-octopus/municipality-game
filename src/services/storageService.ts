@@ -37,6 +37,7 @@ export const DEFAULT_CONFIG: ConfigState = {
   nameOnFix: true,
   dragInertia: 0.65,
   quizChoiceLayout: 'pointing',
+  uiTheme: 'classic',
 };
 
 const DEFAULT_TAGS: MapTag[] = [
@@ -71,6 +72,9 @@ export function loadConfig(): ConfigState {
   const merged: ConfigState = { ...DEFAULT_CONFIG, ...saved };
   if (merged.quizChoiceLayout !== 'bottom' && merged.quizChoiceLayout !== 'pointing') {
     merged.quizChoiceLayout = 'pointing';
+  }
+  if (merged.uiTheme !== 'classic' && merged.uiTheme !== 'google') {
+    merged.uiTheme = 'classic';
   }
   try {
     if (!window.localStorage.getItem(KEYS.CONFIG_POINTING_MIGRATED)) {

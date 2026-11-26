@@ -1,0 +1,2353 @@
+@layer theme {
+  :root[data-theme='google'] {
+    color-scheme: light;
+    accent-color: #1a73e8;
+
+    /* Material Design 3 + Google Workspace + Google Maps tokens */
+    --gm-primary: #1a73e8;
+    --gm-primary-hover: #1557b0;
+    --gm-primary-container: #d3e3fd;
+    --gm-on-primary: #ffffff;
+    --gm-on-primary-container: #041e49;
+    --gm-primary-tint: #e8f0fe;
+
+    --gm-surface-lowest: #ffffff;
+    --gm-surface-low: #f8fafd;
+    --gm-surface: #f0f4f9;
+    --gm-surface-high: #e9eef6;
+    --gm-surface-highest: #dde3ea;
+
+    --gm-ink: #1f1f1f;
+    --gm-ink-muted: #444746;
+    --gm-outline: #747775;
+    --gm-outline-variant: #c4c7c5;
+
+    --gm-green: #1e8e3e;
+    --gm-green-container: #ceead6;
+    --gm-on-green-container: #0d652d;
+
+    --gm-amber: #f9ab00;
+    --gm-amber-container: #feefc3;
+    --gm-on-amber-container: #764200;
+
+    --gm-red: #d93025;
+    --gm-red-container: #fce8e6;
+    --gm-on-red-container: #a50e0e;
+
+    --gm-purple: #8430ce;
+    --gm-purple-container: #f3e8fd;
+    --gm-on-purple-container: #5b1999;
+
+    --gm-map-ocean: #c8e4fd;
+    --gm-map-ocean-inset: #bddbf7;
+    --gm-map-land: #ffffff;
+    --gm-map-land-stroke: #80868b;
+
+    --gm-shadow-1: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+    --gm-shadow-2: 0 1px 3px rgba(60, 64, 67, 0.3), 0 4px 8px 3px rgba(60, 64, 67, 0.15);
+    --gm-shadow-3: 0 4px 8px 3px rgba(60, 64, 67, 0.15), 0 1px 3px rgba(60, 64, 67, 0.3);
+
+    --gm-font-sans: 'Google Sans', 'Roboto', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
+    --gm-font-mono: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    /* Shared CSS variables mapped to Google tokens */
+    --bg-ocean: var(--gm-map-ocean);
+    --bg-surface: var(--gm-surface-lowest);
+    --bg-muted: var(--gm-surface-high);
+    --ink: var(--gm-ink);
+    --ink-muted: var(--gm-ink-muted);
+    --border: var(--gm-outline-variant);
+    --accent: var(--gm-primary);
+    --accent-hover: var(--gm-primary-hover);
+    --accent-soft: var(--gm-primary-tint);
+    --warm: #ea4335;
+    --success: var(--gm-green);
+    --danger: var(--gm-red);
+    --shadow-sm: var(--gm-shadow-1);
+    --shadow-lg: var(--gm-shadow-2);
+
+    /* SVG / Pointing / Puzzle / Confetti shared contract */
+    --pointing-line-default: #1a73e8;
+    --pointing-line-hover: #1557b0;
+    --pointing-line-correct: #1e8e3e;
+    --pointing-line-muted: #dadce0;
+    --pointing-line-casing: #ffffff;
+    --pointing-anchor-ring: rgba(234, 67, 53, 0.24);
+    --pointing-anchor-fill: #ea4335;
+    --pointing-anchor-ok: #1e8e3e;
+
+    --puzzle-piece-fill: #4285f4;
+    --puzzle-piece-stroke: #174ea6;
+    --puzzle-ghost-fill: #1a73e8;
+    --puzzle-ghost-stroke: #174ea6;
+
+    --confetti-0: #4285f4;
+    --confetti-1: #ea4335;
+    --confetti-2: #fbbc04;
+    --confetti-3: #34a853;
+    --confetti-4: #a142f4;
+
+    /* Scrollbar tokens (never animated) */
+    --scrollbar-thumb: #747775;
+    --scrollbar-track: #f0f4f9;
+
+    /* Target size token */
+    --target-size: 24px;
+  }
+
+  :where([data-theme='google']) {
+    color-scheme: light;
+    accent-color: #1a73e8;
+    font-family: var(--gm-font-sans);
+    color: var(--gm-ink);
+    line-height: 1.5;
+  }
+
+  :where([data-theme='google']) body,
+  :where([data-theme='google']) #root,
+  :where([data-theme='google']).app-root,
+  :where([data-theme='google']) .app-root {
+    font-family: var(--gm-font-sans);
+    color: var(--gm-ink);
+    background: var(--gm-surface);
+    line-height: 1.5;
+    overflow-wrap: break-word;
+  }
+
+  :where([data-theme='google']) ::selection {
+    background: #d3e3fd;
+    color: #041e49;
+  }
+
+  :where([data-theme='google']) .mono,
+  :where([data-theme='google']) .hud-time-val {
+    font-family: var(--gm-font-mono);
+  }
+
+  :where([data-theme='google']) .muted {
+    color: var(--gm-ink-muted);
+  }
+
+  /* Typography: balance ONLY on headings & table headers, pretty ONLY on body text */
+  :where([data-theme='google']) h1,
+  :where([data-theme='google']) h2,
+  :where([data-theme='google']) h3,
+  :where([data-theme='google']) h4,
+  :where([data-theme='google']) .data-grid-table th {
+    text-wrap: balance;
+    line-height: 1.3;
+  }
+
+  :where([data-theme='google']) .title-subtitle,
+  :where([data-theme='google']) .hud-info-desc,
+  :where([data-theme='google']) .geo-text-window p,
+  :where([data-theme='google']) .mistake-guide-note,
+  :where([data-theme='google']) .changelog-item li,
+  :where([data-theme='google']) .other-pane p {
+    text-wrap: pretty;
+    line-height: 1.55;
+  }
+
+  /* Focus indicator */
+  :where([data-theme='google']) button:focus-visible,
+  :where([data-theme='google']) a:focus-visible,
+  :where([data-theme='google']) input:focus-visible,
+  :where([data-theme='google']) select:focus-visible,
+  :where([data-theme='google']) [tabindex]:focus-visible {
+    outline: 2px solid var(--gm-primary);
+    outline-offset: 2px;
+  }
+
+  /* Scrollbar theming (never transition scrollbar-color) */
+  :where([data-theme='google']) :is(
+    html,
+    .modal-body,
+    .data-modal-body,
+    .data-table-scroll,
+    .puzzle-tray-scroll,
+    .submode-list,
+    .custom-pref-checklist,
+    .tag-piece-ul,
+    .tiiki-chip-strip,
+    .result-missed-scroll,
+    .view-quick-search-dropdown,
+    .view-quick-search ul,
+    .hud-info-card
+  ) {
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    scrollbar-width: auto;
+  }
+
+  @supports not (scrollbar-color: auto) {
+    :where([data-theme='google']) .puzzle-tray-scroll {
+      scrollbar-width: auto;
+    }
+
+    :where([data-theme='google']) :is(
+      html,
+      .modal-body,
+      .data-modal-body,
+      .data-table-scroll,
+      .puzzle-tray-scroll,
+      .submode-list,
+      .custom-pref-checklist,
+      .tag-piece-ul,
+      .tiiki-chip-strip,
+      .result-missed-scroll,
+      .view-quick-search-dropdown,
+      .view-quick-search ul
+    )::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    :where([data-theme='google']) :is(
+      html,
+      .modal-body,
+      .data-modal-body,
+      .data-table-scroll,
+      .puzzle-tray-scroll,
+      .submode-list,
+      .custom-pref-checklist,
+      .tag-piece-ul,
+      .tiiki-chip-strip,
+      .result-missed-scroll,
+      .view-quick-search-dropdown,
+      .view-quick-search ul
+    )::-webkit-scrollbar-track {
+      background: var(--scrollbar-track);
+    }
+
+    :where([data-theme='google']) :is(
+      html,
+      .modal-body,
+      .data-modal-body,
+      .data-table-scroll,
+      .puzzle-tray-scroll,
+      .submode-list,
+      .custom-pref-checklist,
+      .tag-piece-ul,
+      .tiiki-chip-strip,
+      .result-missed-scroll,
+      .view-quick-search-dropdown,
+      .view-quick-search ul
+    )::-webkit-scrollbar-thumb {
+      background: var(--scrollbar-thumb);
+      border-radius: 9999px;
+      border: 2px solid var(--scrollbar-track);
+    }
+  }
+
+  /* Native Inputs & Fallback when accent-color is unsupported */
+  :where([data-theme='google']) input:not([type='checkbox'], [type='radio'], [type='range']),
+  :where([data-theme='google']) select {
+    font-family: inherit;
+    color: var(--gm-ink);
+    background: var(--gm-surface-lowest);
+    border: 1px solid var(--gm-outline-variant);
+    min-block-size: 36px;
+  }
+
+  :where([data-theme='google']) input:not([type='checkbox'], [type='radio'], [type='range']):focus,
+  :where([data-theme='google']) select:focus {
+    border-color: var(--gm-primary);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--gm-primary) 18%, transparent);
+    outline: none;
+  }
+
+  @supports not (accent-color: #1a73e8) {
+    :where([data-theme='google']) input[type='checkbox'] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--gm-outline);
+      border-radius: 4px;
+      background: var(--gm-surface-lowest);
+      display: inline-grid;
+      place-content: center;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    :where([data-theme='google']) input[type='checkbox']:checked {
+      background: var(--gm-primary);
+      border-color: var(--gm-primary);
+    }
+
+    :where([data-theme='google']) input[type='checkbox']:checked::after {
+      content: '✓';
+      color: var(--gm-on-primary);
+      font-size: 0.78rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    :where([data-theme='google']) input[type='radio'] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--gm-outline);
+      border-radius: 50%;
+      background: var(--gm-surface-lowest);
+      display: inline-grid;
+      place-content: center;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    :where([data-theme='google']) input[type='radio']:checked {
+      border-color: var(--gm-primary);
+    }
+
+    :where([data-theme='google']) input[type='radio']:checked::after {
+      content: '';
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--gm-primary);
+    }
+
+    :where([data-theme='google']) input[type='range'] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    :where([data-theme='google']) input[type='range']::-webkit-slider-runnable-track {
+      height: 6px;
+      border-radius: 9999px;
+      background: var(--gm-surface-highest);
+    }
+
+    :where([data-theme='google']) input[type='range']::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--gm-primary);
+      margin-top: -6px;
+      border: 2px solid var(--gm-surface-lowest);
+      box-shadow: var(--gm-shadow-1);
+    }
+
+    :where([data-theme='google']) input[type='range']::-moz-range-track {
+      height: 6px;
+      border-radius: 9999px;
+      background: var(--gm-surface-highest);
+    }
+
+    :where([data-theme='google']) input[type='range']::-moz-range-progress {
+      height: 6px;
+      border-radius: 9999px;
+      background: var(--gm-primary);
+    }
+
+    :where([data-theme='google']) input[type='range']::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--gm-primary);
+      border: 2px solid var(--gm-surface-lowest);
+      box-shadow: var(--gm-shadow-1);
+    }
+  }
+
+  /* ---------- Material Design 3 Buttons ---------- */
+  :where([data-theme='google']) .btn-primary,
+  :where([data-theme='google']) .btn-secondary,
+  :where([data-theme='google']) .btn-ghost,
+  :where([data-theme='google']) .btn-warning,
+  :where([data-theme='google']) .btn-danger {
+    border-radius: 9999px;
+    padding: 8px 18px;
+    min-block-size: 36px;
+    min-inline-size: var(--target-size);
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    line-height: 1.25;
+  }
+
+  :where([data-theme='google']) .btn-sm {
+    padding: 6px 14px;
+    min-block-size: 32px;
+    font-size: 0.84rem;
+  }
+
+  :where([data-theme='google']) .btn-xs {
+    padding: 4px 11px;
+    min-block-size: 26px;
+    font-size: 0.78rem;
+  }
+
+  :where([data-theme='google']) .btn-primary {
+    background: var(--gm-primary);
+    color: var(--gm-on-primary);
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  :where([data-theme='google']) .btn-primary:hover:not(:disabled) {
+    background: var(--gm-primary-hover);
+    box-shadow: var(--gm-shadow-1);
+  }
+
+  :where([data-theme='google']) .btn-secondary {
+    background: var(--gm-surface-lowest);
+    color: var(--gm-primary);
+    border-color: var(--gm-outline-variant);
+  }
+
+  :where([data-theme='google']) .btn-secondary:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--gm-primary) 8%, var(--gm-surface-lowest));
+    border-color: var(--gm-primary);
+  }
+
+  :where([data-theme='google']) .btn-ghost {
+    background: transparent;
+    color: var(--gm-ink-muted);
+    border-color: transparent;
+  }
+
+  :where([data-theme='google']) .btn-ghost:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--gm-ink) 8%, transparent);
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .btn-warning {
+    background: var(--gm-amber-container);
+    color: var(--gm-on-amber-container);
+    border-color: color-mix(in oklab, var(--gm-amber) 45%, transparent);
+  }
+
+  :where([data-theme='google']) .btn-warning:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--gm-amber) 24%, var(--gm-amber-container));
+    border-color: var(--gm-amber);
+  }
+
+  :where([data-theme='google']) .btn-danger {
+    background: var(--gm-red-container);
+    color: var(--gm-on-red-container);
+    border-color: color-mix(in oklab, var(--gm-red) 35%, transparent);
+  }
+
+  :where([data-theme='google']) .btn-danger:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--gm-red) 14%, var(--gm-red-container));
+    border-color: var(--gm-red);
+  }
+
+  :where([data-theme='google']) .confirm-inline-btn {
+    background: var(--gm-red) !important;
+    color: #ffffff !important;
+    border-color: var(--gm-on-red-container) !important;
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--gm-red) 28%, transparent);
+  }
+
+  :where([data-theme='google']) .confirm-inline-btn:hover:not(:disabled) {
+    background: var(--gm-on-red-container) !important;
+  }
+
+  :where([data-theme='google']) .btn-hint1,
+  :where([data-theme='google']) .btn-hint2 {
+    border-radius: 9999px;
+    min-block-size: 30px;
+    min-inline-size: var(--target-size);
+    padding: 4px 12px;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  :where([data-theme='google']) .btn-hint1.btn-xs,
+  :where([data-theme='google']) .btn-hint2.btn-xs {
+    min-block-size: 26px;
+    padding: 3px 10px;
+  }
+
+  :where([data-theme='google']) .btn-hint1 {
+    background: var(--gm-amber-container);
+    color: var(--gm-on-amber-container);
+    border-color: #f9ab00;
+  }
+
+  :where([data-theme='google']) .btn-hint1:hover:not(:disabled),
+  :where([data-theme='google']) .btn-hint1.is-active {
+    background: color-mix(in oklab, var(--gm-amber) 24%, var(--gm-amber-container));
+    border-color: #b06000;
+    box-shadow: var(--gm-shadow-1);
+  }
+
+  :where([data-theme='google']) .btn-hint2 {
+    background: var(--gm-red-container);
+    color: var(--gm-on-red-container);
+    border-color: #ea4335;
+  }
+
+  :where([data-theme='google']) .btn-hint2:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--gm-red) 16%, var(--gm-red-container));
+    border-color: var(--gm-red);
+    box-shadow: var(--gm-shadow-1);
+  }
+
+  :where([data-theme='google']) .btn-group,
+  :where([data-theme='google']) .segmented-control {
+    background: var(--gm-surface-high);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 9999px;
+    padding: 3px;
+    gap: 3px;
+  }
+
+  :where([data-theme='google']) .btn-group.wrap,
+  :where([data-theme='google']) .segmented-control.wrap {
+    border-radius: 16px;
+  }
+
+  :where([data-theme='google']) .btn-group button,
+  :where([data-theme='google']) .segmented-control button {
+    border-radius: 9999px;
+    min-block-size: 28px;
+    min-inline-size: var(--target-size);
+    padding: 5px 12px;
+    font-weight: 500;
+    color: var(--gm-ink-muted);
+    line-height: 1.25;
+  }
+
+  :where([data-theme='google']) .btn-group button:hover:not(.active),
+  :where([data-theme='google']) .segmented-control button:hover:not(.active) {
+    color: var(--gm-ink);
+    background: color-mix(in oklab, var(--gm-ink) 6%, transparent);
+  }
+
+  :where([data-theme='google']) .btn-group button.active,
+  :where([data-theme='google']) .segmented-control button.active {
+    background: var(--gm-primary-container);
+    color: var(--gm-on-primary-container);
+    font-weight: 600;
+    box-shadow: none;
+  }
+
+  /* ---------- Title Screen ---------- */
+  :where([data-theme='google']) .title-screen-shell {
+    background: radial-gradient(circle at 18% 12% var(--in-oklab), #f8fafd 0%, #f0f4f9 55%, #e9eef6 100%);
+  }
+
+  :where([data-theme='google']) .title-visual-card {
+    background:
+      linear-gradient(90deg, #4285f4 0 25%, #ea4335 0 50%, #fbbc04 0 75%, #34a853 0 100%) top / 100% 3px no-repeat,
+      var(--gm-surface-lowest);
+    backdrop-filter: none;
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 24px;
+    corner-shape: squircle;
+    box-shadow: var(--gm-shadow-2);
+    padding: 24px 26px;
+  }
+
+  :where([data-theme='google']) .title-badge {
+    background: var(--gm-primary-container);
+    color: var(--gm-on-primary-container);
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 9999px;
+  }
+
+  :where([data-theme='google']) .title-version-badge {
+    background: var(--gm-surface-high);
+    color: var(--gm-ink-muted);
+    border-color: var(--gm-outline-variant);
+    font-weight: 700;
+    border-radius: 9999px;
+  }
+
+  :where([data-theme='google']) .title-main-heading {
+    color: var(--gm-ink);
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+
+  :where([data-theme='google']) .title-subtitle {
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .title-hero-blankmap {
+    background: var(--gm-map-ocean);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 16px;
+  }
+
+  :where([data-theme='google']) .hero-map-land {
+    fill: var(--gm-map-land);
+    stroke: var(--gm-map-land-stroke);
+  }
+
+  :where([data-theme='google']) .hero-map-inset-frame {
+    fill: none;
+    stroke: #5f6368;
+  }
+
+  :where([data-theme='google']) .home-mastery-strip {
+    background: var(--gm-surface-low);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 14px;
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .home-mastery-strip strong {
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .title-version-footer {
+    border-top: 1px solid var(--gm-outline-variant);
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .menu-btn {
+    background: var(--gm-surface-lowest);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 18px;
+    corner-shape: squircle;
+    box-shadow: var(--gm-shadow-1);
+    min-block-size: 52px;
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .menu-btn:hover {
+    border-color: var(--gm-primary);
+    background: color-mix(in oklab, var(--gm-primary) 5%, var(--gm-surface-lowest));
+    box-shadow: var(--gm-shadow-2);
+  }
+
+  :where([data-theme='google']) .menu-btn-start {
+    background: linear-gradient(135deg var(--in-oklab), #1a73e8, #1557b0);
+    color: var(--gm-on-primary);
+    border-color: transparent;
+    box-shadow: var(--gm-shadow-2);
+  }
+
+  :where([data-theme='google']) .menu-btn-start:hover {
+    background: linear-gradient(135deg var(--in-oklab), #1967d2, #174ea6);
+    border-color: transparent;
+    box-shadow: var(--gm-shadow-3);
+  }
+
+  :where([data-theme='google']) .menu-btn-start .menu-btn-sub {
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  :where([data-theme='google']) .menu-btn-resume {
+    background: var(--gm-primary-tint);
+    border-color: color-mix(in oklab, var(--gm-primary) 45%, transparent);
+  }
+
+  :where([data-theme='google']) .menu-btn-resume:hover {
+    background: color-mix(in oklab, var(--gm-primary-container) 75%, var(--gm-surface-lowest));
+    border-color: var(--gm-primary);
+  }
+
+  :where([data-theme='google']) .autosave-dismiss-btn {
+    border: 1px solid color-mix(in oklab, var(--gm-primary) 30%, transparent);
+    background: var(--gm-surface-lowest);
+    color: var(--gm-on-primary-container);
+    border-radius: 9999px;
+    padding: 3px 10px;
+    min-block-size: 24px;
+    min-inline-size: 24px;
+  }
+
+  :where([data-theme='google']) .autosave-dismiss-btn:hover {
+    background: var(--gm-red-container);
+    border-color: var(--gm-red);
+    color: var(--gm-on-red-container);
+  }
+
+  :where([data-theme='google']) .menu-btn-mistakes {
+    background: var(--gm-amber-container);
+    border-color: color-mix(in oklab, var(--gm-amber) 60%, transparent);
+    color: var(--gm-on-amber-container);
+  }
+
+  :where([data-theme='google']) .menu-btn-mistakes .menu-btn-sub {
+    color: color-mix(in oklab, var(--gm-on-amber-container) 85%, transparent);
+  }
+
+  :where([data-theme='google']) .menu-btn-title {
+    font-weight: 600;
+  }
+
+  :where([data-theme='google']) .menu-btn-sub {
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .submode-autosave-pill {
+    margin-left: 0;
+    background: var(--gm-primary-container);
+    color: var(--gm-on-primary-container);
+    border-color: color-mix(in oklab, var(--gm-primary) 35%, transparent);
+  }
+
+  /* ---------- Area Select ---------- */
+  :where([data-theme='google']) .area-select-header h2 {
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .area-category-tabs button {
+    border-radius: 9999px;
+    min-block-size: 36px;
+    min-inline-size: var(--target-size);
+    border: 1px solid var(--gm-outline-variant);
+    background: var(--gm-surface-lowest);
+    color: var(--gm-ink-muted);
+    font-weight: 600;
+    padding: 8px 18px;
+  }
+
+  :where([data-theme='google']) .area-category-tabs button:hover:not(.active) {
+    background: color-mix(in oklab, var(--gm-primary) 6%, var(--gm-surface-lowest));
+    border-color: var(--gm-primary);
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .area-category-tabs button.active {
+    background: var(--gm-primary-container);
+    color: var(--gm-on-primary-container);
+    border-color: var(--gm-primary);
+  }
+
+  :where([data-theme='google']) .area-search-bar {
+    background: var(--gm-surface-lowest);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 9999px;
+    padding: 8px 14px;
+    box-shadow: var(--gm-shadow-1);
+  }
+
+  :where([data-theme='google']) .area-search-bar input {
+    border-radius: 9999px;
+    background: var(--gm-surface);
+    border-color: transparent;
+    padding: 6px 14px;
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .area-search-bar input:focus {
+    background: var(--gm-surface-lowest);
+    border-color: var(--gm-primary);
+  }
+
+  :where([data-theme='google']) .area-filter-pills button {
+    min-block-size: 28px;
+    min-inline-size: var(--target-size);
+    border: 1px solid var(--gm-outline-variant);
+    background: var(--gm-surface-lowest);
+    color: var(--gm-ink-muted);
+    border-radius: 9999px;
+    padding: 4px 12px;
+    font-weight: 600;
+  }
+
+  :where([data-theme='google']) .area-filter-pills button:hover:not(.active) {
+    border-color: var(--gm-primary);
+    color: var(--gm-primary);
+    background: var(--gm-primary-tint);
+  }
+
+  :where([data-theme='google']) .area-filter-pills button.active {
+    background: var(--gm-primary-container);
+    border-color: var(--gm-primary);
+    color: var(--gm-on-primary-container);
+  }
+
+  :where([data-theme='google']) .area-region-heading {
+    border-left: 4px solid var(--gm-primary);
+    background: var(--gm-surface-lowest);
+    border-radius: 0 12px 12px 0;
+    padding: 6px 12px;
+    color: var(--gm-ink);
+    box-shadow: var(--gm-shadow-1);
+  }
+
+  :where([data-theme='google']) .area-card-btn {
+    background: var(--gm-surface-lowest);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 16px;
+    corner-shape: squircle;
+    box-shadow: var(--gm-shadow-1);
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .area-card-btn:hover {
+    border-color: var(--gm-primary);
+    background: color-mix(in oklab, var(--gm-primary) 4%, var(--gm-surface-lowest));
+    box-shadow: var(--gm-shadow-2);
+  }
+
+  :where([data-theme='google']) .area-card-ruby,
+  :where([data-theme='google']) .area-card-sub {
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .area-card-clear-badge {
+    background: var(--gm-green-container);
+    color: var(--gm-on-green-container);
+  }
+
+  /* ---------- Map Play & View Screens ---------- */
+  :where([data-theme='google']) .map-screen-root {
+    background: var(--gm-map-ocean);
+  }
+
+  @media (hover: hover) {
+    :where([data-theme='google']) .map-piece-clickable:hover path {
+      filter: brightness(0.95) saturate(1.1);
+      stroke: var(--gm-primary);
+      stroke-width: 1.6;
+    }
+
+    :where([data-theme='google']) .map-piece-clickable:hover polygon,
+    :where([data-theme='google']) .map-piece-clickable:hover polyline {
+      filter: brightness(0.95) saturate(1.1);
+    }
+  }
+
+  :where([data-theme='google']) .pref-hover-tooltip {
+    background: #202124;
+    color: #ffffff;
+    border-radius: 8px;
+    box-shadow: var(--gm-shadow-2);
+    backdrop-filter: none;
+  }
+
+  :where([data-theme='google']) .map-loading-state,
+  :where([data-theme='google']) .app-fatal-error {
+    color: var(--gm-ink-muted);
+  }
+
+  /* ---------- Top HUD & Progress Bar ---------- */
+  :where([data-theme='google']) .hud-topbar,
+  :where([data-theme='google']) .view-topbar {
+    background:
+      linear-gradient(90deg, #4285f4 0 25%, #ea4335 0 50%, #fbbc04 0 75%, #34a853 0 100%) top / 100% 2px no-repeat,
+      rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--gm-outline-variant);
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.12);
+  }
+
+  :where([data-theme='google']) .hud-progress-track {
+    background: var(--gm-surface-highest);
+    height: 4px;
+  }
+
+  :where([data-theme='google']) .hud-progress-fill {
+    background: var(--gm-green);
+  }
+
+  :where([data-theme='google']) .hud-progress-miss {
+    background: var(--gm-amber);
+  }
+
+  :where([data-theme='google']) .hud-area-title {
+    color: var(--gm-ink);
+    font-weight: 700;
+  }
+
+  :where([data-theme='google']) .hud-mode-badge {
+    background: var(--gm-primary-container);
+    color: var(--gm-on-primary-container);
+    border-radius: 9999px;
+    padding: 3px 10px;
+  }
+
+  :where([data-theme='google']) .hud-stat-label {
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .hud-miss-val {
+    color: var(--gm-red);
+  }
+
+  :where([data-theme='google']) .hud-hint-val {
+    color: var(--gm-on-amber-container);
+  }
+
+  :where([data-theme='google']) .hud-btn,
+  :where([data-theme='google']) .view-toggle-btn {
+    background: var(--gm-surface-lowest);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 9999px;
+    min-block-size: 30px;
+    min-inline-size: var(--target-size);
+    padding: 5px 12px;
+    color: var(--gm-ink);
+    font-weight: 500;
+    line-height: 1.25;
+  }
+
+  :where([data-theme='google']) .hud-btn:hover:not(:disabled),
+  :where([data-theme='google']) .view-toggle-btn:hover:not(:disabled) {
+    background: var(--gm-surface);
+    border-color: var(--gm-outline);
+  }
+
+  :where([data-theme='google']) .hud-btn-primary {
+    background: var(--gm-primary);
+    color: var(--gm-on-primary);
+    border-color: var(--gm-primary);
+  }
+
+  :where([data-theme='google']) .hud-btn-primary:hover:not(:disabled) {
+    background: var(--gm-primary-hover);
+    border-color: var(--gm-primary-hover);
+  }
+
+  :where([data-theme='google']) .hud-mute-btn.is-muted {
+    background: var(--gm-surface-high);
+    color: var(--gm-ink-muted);
+    border-color: var(--gm-outline-variant);
+  }
+
+  :where([data-theme='google']) .hud-toggle-btn {
+    background: var(--gm-green-container);
+    border-color: color-mix(in oklab, var(--gm-green) 45%, transparent);
+    color: var(--gm-on-green-container);
+    border-radius: 9999px;
+    min-block-size: 28px;
+    min-inline-size: var(--target-size);
+    padding: 4px 12px;
+    line-height: 1.25;
+  }
+
+  :where([data-theme='google']) .hud-toggle-btn.btn-xs {
+    min-block-size: 26px;
+    padding: 4px 10px;
+  }
+
+  :where([data-theme='google']) .hud-toggle-btn:hover {
+    background: color-mix(in oklab, var(--gm-green) 18%, var(--gm-green-container));
+    border-color: var(--gm-green);
+  }
+
+  :where([data-theme='google']) .hud-toggle-btn.is-off {
+    background: var(--gm-surface-high);
+    border-color: var(--gm-outline-variant);
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .hud-toggle-btn.is-off:hover {
+    background: var(--gm-surface-highest);
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .view-toggle-btn.on {
+    background: var(--gm-primary-container);
+    border-color: var(--gm-primary);
+    color: var(--gm-on-primary-container);
+    font-weight: 600;
+  }
+
+  :where([data-theme='google']) .view-toggle-btn.on:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--gm-primary) 18%, var(--gm-primary-container));
+    border-color: var(--gm-primary-hover);
+  }
+
+  :where([data-theme='google']) .view-area-select {
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 9999px;
+    padding: 5px 14px;
+    min-block-size: 32px;
+    background: var(--gm-surface-lowest);
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .view-quick-search input {
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 9999px;
+    padding: 5px 14px;
+    min-block-size: 32px;
+    background: var(--gm-surface);
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .view-quick-search input:focus {
+    background: var(--gm-surface-lowest);
+    border-color: var(--gm-primary);
+  }
+
+  :where([data-theme='google']) .view-quick-search ul,
+  :where([data-theme='google']) .view-quick-search .view-quick-search-list,
+  :where([data-theme='google']) .view-quick-search-dropdown {
+    background: var(--gm-surface-lowest);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 14px;
+    box-shadow: var(--gm-shadow-2);
+    padding: 6px;
+  }
+
+  :where([data-theme='google']) .view-quick-search li button,
+  :where([data-theme='google']) .view-quick-search-dropdown .tag-piece-link {
+    border-radius: 8px;
+    min-block-size: 32px;
+    padding: 6px 10px;
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .view-quick-search li button:hover,
+  :where([data-theme='google']) .view-quick-search-dropdown .tag-piece-link:hover {
+    background: var(--gm-primary-tint);
+  }
+
+  /* ---------- Map Zoom, Jump, Info Card & Overlays ---------- */
+  :where([data-theme='google']) .hud-zoom-rail {
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 16px;
+    box-shadow: var(--gm-shadow-2);
+    padding: 6px 5px;
+  }
+
+  :where([data-theme='google']) .zoom-step-btn,
+  :where([data-theme='google']) .zoom-reset-btn {
+    border: 1px solid var(--gm-outline-variant);
+    background: var(--gm-surface-lowest);
+    border-radius: 9999px;
+    color: var(--gm-ink);
+    min-block-size: 28px;
+    min-inline-size: 32px;
+    width: auto;
+    height: auto;
+    padding: 4px 8px;
+  }
+
+  :where([data-theme='google']) .zoom-reset-btn {
+    min-inline-size: 38px;
+    padding: 4px 8px;
+  }
+
+  :where([data-theme='google']) .zoom-step-btn:hover:not(:disabled),
+  :where([data-theme='google']) .zoom-reset-btn:hover:not(:disabled) {
+    background: var(--gm-primary-tint);
+    border-color: var(--gm-primary);
+    color: var(--gm-primary);
+  }
+
+  :where([data-theme='google']) .zoom-vertical-slider {
+    width: 24px;
+  }
+
+  :where([data-theme='google']) .zoom-readout {
+    color: var(--gm-ink-muted);
+    font-family: var(--gm-font-mono);
+  }
+
+  :where([data-theme='google']) .hud-jump-bar {
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 9999px;
+    box-shadow: var(--gm-shadow-2);
+    padding: 5px 10px;
+  }
+
+  :where([data-theme='google']) .jump-chip-btn {
+    border: 1px solid var(--gm-outline-variant);
+    background: var(--gm-surface-lowest);
+    border-radius: 9999px;
+    min-block-size: 26px;
+    min-inline-size: var(--target-size);
+    padding: 3px 11px;
+    color: var(--gm-ink);
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  :where([data-theme='google']) .jump-chip-btn:hover {
+    background: var(--gm-primary-tint);
+    border-color: var(--gm-primary);
+    color: var(--gm-primary);
+  }
+
+  :where([data-theme='google']) .hud-last-answer-pill {
+    background: rgba(255, 255, 255, 0.97);
+    border: 1px solid color-mix(in oklab, var(--gm-green) 45%, transparent);
+    border-left: 4px solid var(--gm-green);
+    border-radius: 14px;
+    box-shadow: var(--gm-shadow-2);
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .hud-info-card {
+    background: rgba(255, 255, 255, 0.98);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 18px;
+    corner-shape: squircle;
+    box-shadow: var(--gm-shadow-3);
+    padding: 12px 14px;
+  }
+
+  :where([data-theme='google']) .hud-info-ruby,
+  :where([data-theme='google']) .hud-info-pref,
+  :where([data-theme='google']) .hud-info-meta,
+  :where([data-theme='google']) .hud-tag-title {
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .hud-info-name {
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .hud-info-desc {
+    background: var(--gm-surface);
+    border-left: 3px solid var(--gm-primary);
+    border-radius: 8px;
+    color: var(--gm-ink);
+    padding: 6px 10px;
+  }
+
+  :where([data-theme='google']) .hud-wiki-link {
+    color: var(--gm-primary);
+    border: 1px solid color-mix(in oklab, var(--gm-primary) 30%, transparent);
+    background: var(--gm-primary-tint);
+    border-radius: 9999px;
+    min-block-size: 24px;
+    padding: 3px 10px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  :where([data-theme='google']) .hud-wiki-link:hover {
+    background: var(--gm-primary-container);
+    border-color: var(--gm-primary);
+    color: var(--gm-on-primary-container);
+  }
+
+  :where([data-theme='google']) .hud-info-close {
+    background: var(--gm-surface-high);
+    color: var(--gm-ink);
+    border-radius: 9999px;
+    min-block-size: 26px;
+    min-inline-size: 26px;
+    width: auto;
+    height: auto;
+    padding: 2px 7px;
+  }
+
+  :where([data-theme='google']) .hud-info-close:hover {
+    background: var(--gm-surface-highest);
+  }
+
+  :where([data-theme='google']) .hud-tag-row {
+    border-top-color: var(--gm-surface-high);
+  }
+
+  :where([data-theme='google']) .hud-tag-chip {
+    border: 1px solid var(--gm-outline-variant);
+    background: var(--gm-surface-lowest);
+    color: var(--gm-ink);
+    border-radius: 9999px;
+    min-block-size: 24px;
+    min-inline-size: var(--target-size);
+    padding: 3px 9px;
+  }
+
+  :where([data-theme='google']) .hud-tag-chip:hover {
+    border-color: var(--gm-purple);
+    background: var(--gm-purple-container);
+    color: var(--gm-on-purple-container);
+  }
+
+  :where([data-theme='google']) .hud-tag-chip.active {
+    background: var(--gm-purple-container);
+    border-color: var(--gm-purple);
+    color: var(--gm-on-purple-container);
+  }
+
+  :where([data-theme='google']) .hud-tag-manage-btn {
+    color: var(--gm-primary);
+    min-block-size: 24px;
+    min-inline-size: var(--target-size);
+    padding: 2px 6px;
+  }
+
+  :where([data-theme='google']) .ready-overlay,
+  :where([data-theme='google']) .ready-go-overlay {
+    background: rgba(32, 33, 36, 0.3);
+  }
+
+  :where([data-theme='google']) .ready-banner {
+    background: var(--gm-surface-lowest);
+    border: 2px solid var(--gm-primary);
+    border-radius: 24px;
+    color: var(--gm-primary);
+    box-shadow: var(--gm-shadow-3);
+  }
+
+  :where([data-theme='google']) .ready-banner.is-go {
+    border-color: var(--gm-green);
+    color: var(--gm-green);
+  }
+
+  :where([data-theme='google']) .puzzle-miss-toast {
+    background: var(--gm-on-red-container);
+    color: #ffffff;
+    box-shadow: var(--gm-shadow-3);
+  }
+
+  /* ---------- Puzzle Tray & Drag Ghost ---------- */
+  :where([data-theme='google']) .puzzle-tray,
+  :where([data-theme='google']) .puzzle-single-prompt {
+    background: rgba(255, 255, 255, 0.98);
+    border-top: 1px solid var(--gm-outline-variant);
+    box-shadow: 0 -2px 8px rgba(60, 64, 67, 0.1);
+  }
+
+  :where([data-theme='google']) .tray-nav-btn,
+  :where([data-theme='google']) .tray-toggle-btn {
+    border: 1px solid var(--gm-outline-variant);
+    background: var(--gm-surface-lowest);
+    color: var(--gm-ink);
+    border-radius: 9999px;
+    min-block-size: 28px;
+    min-inline-size: var(--target-size);
+    padding: 4px 11px;
+  }
+
+  :where([data-theme='google']) .tray-nav-btn:hover,
+  :where([data-theme='google']) .tray-toggle-btn:hover {
+    background: var(--gm-primary-tint);
+    border-color: var(--gm-primary);
+    color: var(--gm-primary);
+  }
+
+  :where([data-theme='google']) .tray-search-input {
+    border-radius: 9999px;
+    padding: 4px 12px;
+    background: var(--gm-surface);
+  }
+
+  :where([data-theme='google']) .tray-sort-select {
+    border-radius: 9999px;
+    padding: 4px 12px;
+    background: var(--gm-surface-lowest);
+  }
+
+  :where([data-theme='google']) .tray-filter-count {
+    color: var(--gm-ink-muted);
+    font-family: var(--gm-font-mono);
+  }
+
+  :where([data-theme='google']) .puzzle-piece-card {
+    background: var(--gm-surface-low);
+    border: 1.5px solid var(--gm-outline-variant);
+    border-radius: 14px;
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .puzzle-piece-card:hover {
+    border-color: var(--gm-primary);
+    background: var(--gm-primary-tint);
+  }
+
+  :where([data-theme='google']) .puzzle-piece-card.selected {
+    border-color: var(--gm-primary);
+    background: var(--gm-primary-container);
+    color: var(--gm-on-primary-container);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--gm-primary) 28%, transparent);
+  }
+
+  :where([data-theme='google']) .puzzle-piece-label .pr {
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .pref-homonym-badge {
+    background: var(--gm-primary-tint);
+    color: var(--gm-primary-hover);
+    border-radius: 9999px;
+  }
+
+  :where([data-theme='google']) .link-btn {
+    color: var(--gm-primary);
+  }
+
+  :where([data-theme='google']) .link-btn:hover:not(:disabled) {
+    background: var(--gm-primary-tint);
+  }
+
+  :where([data-theme='google']) .drag-ghost-svg {
+    filter: drop-shadow(0 8px 14px rgba(23, 78, 166, 0.3));
+  }
+
+  :where([data-theme='google']) .drag-ghost-name {
+    background: #202124;
+    color: #ffffff;
+    box-shadow: var(--gm-shadow-1);
+  }
+
+  /* ---------- Quiz & Yomikata Bottom Panel ---------- */
+  :where([data-theme='google']) .bottom-play-panel {
+    background: rgba(255, 255, 255, 0.98);
+    border-top: 1px solid var(--gm-outline-variant);
+    box-shadow: 0 -2px 8px rgba(60, 64, 67, 0.1);
+  }
+
+  :where([data-theme='google']) .geo-text-window {
+    background: var(--gm-surface-low);
+    border: 1px solid var(--gm-outline-variant);
+    border-left: 4px solid var(--gm-primary);
+    border-radius: 12px;
+  }
+
+  :where([data-theme='google']) .geo-text-badge {
+    background: var(--gm-primary-container);
+    color: var(--gm-on-primary-container);
+    border-radius: 9999px;
+  }
+
+  :where([data-theme='google']) .quiz-prompt-text {
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .quiz-key-badge {
+    background: var(--gm-surface-high);
+    border: 1px solid var(--gm-outline-variant);
+    color: var(--gm-ink-muted);
+    border-radius: 6px;
+    font-family: var(--gm-font-mono);
+  }
+
+  :where([data-theme='google']) .quiz-choice-btn {
+    background: var(--gm-surface-lowest);
+    border: 1.5px solid var(--gm-outline-variant);
+    border-radius: 14px;
+    min-block-size: 46px;
+    color: var(--gm-ink);
+    box-shadow: var(--gm-shadow-1);
+  }
+
+  :where([data-theme='google']) .quiz-choice-btn:hover:not(:disabled) {
+    border-color: var(--gm-primary);
+    background: var(--gm-primary-tint);
+  }
+
+  :where([data-theme='google']) .quiz-choice-btn.is-wrong-disabled {
+    background: var(--gm-surface);
+    color: var(--gm-outline);
+    border-color: var(--gm-surface-highest);
+    box-shadow: none;
+  }
+
+  :where([data-theme='google']) .quiz-choice-btn.is-hint-eliminated {
+    background: var(--gm-surface-low);
+    color: var(--gm-outline);
+    border-color: var(--gm-outline-variant);
+    box-shadow: none;
+  }
+
+  :where([data-theme='google']) .quiz-choice-btn.is-hint-eliminated .choice-ruby {
+    color: var(--gm-outline);
+  }
+
+  :where([data-theme='google']) .quiz-choice-btn.is-hint-correct {
+    background: var(--gm-green-container);
+    color: var(--gm-on-green-container);
+    border-color: var(--gm-green);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--gm-green) 28%, transparent);
+  }
+
+  :where([data-theme='google']) .quiz-choice-btn.is-hint-correct .choice-ruby {
+    color: var(--gm-on-green-container);
+  }
+
+  :where([data-theme='google']) .choice-ruby {
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .quiz-pointing-card {
+    background: rgba(255, 255, 255, 0.96);
+    border: 1.5px solid var(--gm-outline);
+    border-radius: 14px;
+    min-block-size: 40px;
+    color: var(--gm-ink);
+    box-shadow: var(--gm-shadow-2);
+  }
+
+  :where([data-theme='google']) .quiz-pointing-card:hover:not(:disabled) {
+    background: var(--gm-primary-tint);
+    border-color: var(--gm-primary);
+    box-shadow: var(--gm-shadow-3);
+  }
+
+  :where([data-theme='google']) .quiz-pointing-card.is-wrong-disabled {
+    background: rgba(240, 244, 249, 0.9);
+    color: var(--gm-outline);
+    border-color: var(--gm-outline-variant);
+    box-shadow: none;
+  }
+
+  :where([data-theme='google']) .quiz-pointing-card.is-hint-eliminated {
+    background: rgba(248, 250, 253, 0.88);
+    color: var(--gm-outline);
+    border-color: var(--gm-outline-variant);
+    box-shadow: none;
+  }
+
+  :where([data-theme='google']) .quiz-pointing-card.is-wrong-disabled .choice-ruby,
+  :where([data-theme='google']) .quiz-pointing-card.is-hint-eliminated .choice-ruby {
+    color: var(--gm-outline);
+  }
+
+  :where([data-theme='google']) .quiz-pointing-card.is-hint-correct {
+    background: var(--gm-green-container);
+    color: var(--gm-on-green-container);
+    border-color: var(--gm-green);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--gm-green) 28%, transparent), var(--gm-shadow-2);
+  }
+
+  :where([data-theme='google']) .quiz-pointing-card.is-hint-correct .choice-ruby {
+    color: var(--gm-on-green-container);
+  }
+
+  :where([data-theme='google']) .judge-badge {
+    box-shadow: var(--gm-shadow-3);
+  }
+
+  :where([data-theme='google']) .judge-badge.is-ok {
+    background: var(--gm-green-container);
+    color: var(--gm-green);
+    border-color: var(--gm-green);
+  }
+
+  :where([data-theme='google']) .judge-badge.is-ng {
+    background: var(--gm-red-container);
+    color: var(--gm-red);
+    border-color: var(--gm-red);
+  }
+
+  /* Yomikata */
+  :where([data-theme='google']) .yomi-tag {
+    background: var(--gm-primary-container);
+    color: var(--gm-on-primary-container);
+    border-radius: 9999px;
+  }
+
+  :where([data-theme='google']) .yomi-length-pill {
+    background: var(--gm-surface-high);
+    color: var(--gm-ink-muted);
+    border-color: var(--gm-outline-variant);
+  }
+
+  :where([data-theme='google']) .yomi-reveal-banner {
+    background: var(--gm-amber-container);
+    border-color: color-mix(in oklab, var(--gm-amber) 55%, transparent);
+    color: var(--gm-on-amber-container);
+    border-radius: 12px;
+  }
+
+  :where([data-theme='google']) .yomi-text-input {
+    border: 2px solid var(--gm-outline-variant);
+    border-radius: 14px;
+    background: var(--gm-surface-lowest);
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .yomi-text-input:focus {
+    border-color: var(--gm-primary);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--gm-primary) 18%, transparent);
+  }
+
+  :where([data-theme='google']) .yomi-text-input.is-ok {
+    border-color: var(--gm-green);
+    background: var(--gm-green-container);
+  }
+
+  :where([data-theme='google']) .yomi-text-input.is-ng {
+    border-color: var(--gm-red);
+    background: var(--gm-red-container);
+  }
+
+  /* ---------- Modals ---------- */
+  :where([data-theme='google']) .modal-backdrop {
+    background: rgba(32, 33, 36, 0.45);
+    overflow: hidden;
+    overscroll-behavior: contain;
+  }
+
+  :where([data-theme='google']) .modal-card {
+    background: var(--gm-surface-lowest);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 24px;
+    corner-shape: squircle;
+    box-shadow: var(--gm-shadow-3);
+    overscroll-behavior: contain;
+  }
+
+  :where([data-theme='google']) .modal-header {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--gm-surface-high);
+  }
+
+  :where([data-theme='google']) .modal-header h3 {
+    color: var(--gm-ink);
+    font-weight: 600;
+  }
+
+  :where([data-theme='google']) .modal-close-btn {
+    background: var(--gm-surface-high);
+    color: var(--gm-ink-muted);
+    border-radius: 9999px;
+    min-block-size: 30px;
+    min-inline-size: 30px;
+    width: auto;
+    height: auto;
+    padding: 4px 9px;
+  }
+
+  :where([data-theme='google']) .modal-close-btn:hover {
+    background: var(--gm-surface-highest);
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .modal-body {
+    padding: 14px 20px;
+    overscroll-behavior: contain;
+  }
+
+  :where([data-theme='google']) .modal-footer {
+    padding: 12px 20px 16px;
+    border-top: 1px solid var(--gm-surface-high);
+  }
+
+  /* ---------- Config Modal ---------- */
+  :where([data-theme='google']) .config-section {
+    border-top: 1px solid var(--gm-surface-high);
+    padding-top: 12px;
+  }
+
+  :where([data-theme='google']) .config-section h4,
+  :where([data-theme='google']) .config-section-heading {
+    color: var(--gm-primary);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  :where([data-theme='google']) .config-check {
+    min-block-size: 34px;
+    padding: 6px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--gm-outline-variant);
+    background: var(--gm-surface-low);
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .config-check:hover {
+    border-color: var(--gm-primary);
+    background: var(--gm-primary-tint);
+  }
+
+  :where([data-theme='google']) .config-check:has(:checked) {
+    background: var(--gm-primary-container);
+    border-color: var(--gm-primary);
+    color: var(--gm-on-primary-container);
+    font-weight: 500;
+  }
+
+  /* ---------- GameInfo & Question Count ---------- */
+  :where([data-theme='google']) .gameinfo-ruby {
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .gameinfo-meta-strip {
+    background: var(--gm-surface);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 14px;
+  }
+
+  :where([data-theme='google']) .submode-row-btn {
+    border: 1px solid var(--gm-outline-variant);
+    background: var(--gm-surface-lowest);
+    color: var(--gm-ink);
+    border-radius: 14px;
+    min-block-size: 40px;
+    padding: 10px 14px;
+  }
+
+  :where([data-theme='google']) .submode-row-btn:hover:not(.active) {
+    border-color: var(--gm-primary);
+    background: var(--gm-surface-low);
+  }
+
+  :where([data-theme='google']) .submode-row-btn.active {
+    border-color: var(--gm-primary);
+    background: var(--gm-primary-container);
+    color: var(--gm-on-primary-container);
+  }
+
+  :where([data-theme='google']) .crown-badge {
+    color: var(--gm-amber);
+  }
+
+  :where([data-theme='google']) .question-count-box {
+    background: var(--gm-surface-low);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 14px;
+    padding: 12px 14px;
+  }
+
+  :where([data-theme='google']) .qcount-note {
+    color: var(--gm-ink-muted);
+  }
+
+  /* ---------- Custom & Random Modals ---------- */
+  :where([data-theme='google']) .custom-mini-japan-svg {
+    background: var(--gm-map-ocean);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 14px;
+  }
+
+  :where([data-theme='google']) .custom-mini-land {
+    fill: var(--gm-map-land);
+    stroke: var(--gm-map-land-stroke);
+  }
+
+  :where([data-theme='google']) .custom-mini-land.is-active {
+    fill: #4285f4;
+    stroke: #174ea6;
+  }
+
+  :where([data-theme='google']) .custom-pref-chip {
+    min-block-size: 30px;
+    border: 1px solid var(--gm-outline-variant);
+    background: var(--gm-surface-lowest);
+    color: var(--gm-ink);
+    border-radius: 10px;
+    padding: 4px 8px;
+  }
+
+  :where([data-theme='google']) .custom-pref-chip:hover {
+    border-color: var(--gm-primary);
+    background: var(--gm-primary-tint);
+  }
+
+  :where([data-theme='google']) .custom-pref-chip.checked,
+  :where([data-theme='google']) .custom-pref-chip:has(:checked) {
+    background: var(--gm-primary-container);
+    border-color: var(--gm-primary);
+    color: var(--gm-on-primary-container);
+    font-weight: 600;
+  }
+
+  /* ---------- Save Slots & Tags ---------- */
+  :where([data-theme='google']) .save-toast {
+    background: var(--gm-green-container);
+    border-color: color-mix(in oklab, var(--gm-green) 45%, transparent);
+    color: var(--gm-on-green-container);
+    border-radius: 12px;
+  }
+
+  :where([data-theme='google']) .save-slot-row {
+    border: 1px solid var(--gm-outline-variant);
+    background: var(--gm-surface-low);
+    border-radius: 14px;
+  }
+
+  :where([data-theme='google']) .save-slot-sub,
+  :where([data-theme='google']) .save-slot-date {
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .tag-create-form input {
+    border-radius: 9999px;
+    padding: 6px 14px;
+  }
+
+  :where([data-theme='google']) .tag-notice {
+    background: var(--gm-primary-tint);
+    border-color: color-mix(in oklab, var(--gm-primary) 35%, transparent);
+    color: var(--gm-on-primary-container);
+    border-radius: 12px;
+  }
+
+  :where([data-theme='google']) .tag-edit-inline input {
+    border-color: var(--gm-primary);
+    border-radius: 8px;
+  }
+
+  :where([data-theme='google']) .tag-row-item {
+    border-color: var(--gm-outline-variant);
+    border-radius: 12px;
+    min-block-size: 36px;
+  }
+
+  :where([data-theme='google']) .tag-row-item.active {
+    background: var(--gm-primary-container);
+    border-color: var(--gm-primary);
+    color: var(--gm-on-primary-container);
+  }
+
+  :where([data-theme='google']) .tag-row-btns button {
+    min-block-size: 26px;
+    min-inline-size: 26px;
+    border-radius: 9999px;
+  }
+
+  :where([data-theme='google']) .tag-piece-link {
+    border-bottom-color: var(--gm-surface-high);
+    color: var(--gm-ink);
+    min-block-size: 32px;
+    border-radius: 8px;
+  }
+
+  :where([data-theme='google']) .tag-piece-link:hover {
+    background: var(--gm-primary-tint);
+  }
+
+  /* ---------- Other Modal & DataTable 11 Tabs ---------- */
+  :where([data-theme='google']) .data-tabs-bar,
+  :where([data-theme='google']) .other-tabs-bar {
+    background: var(--gm-surface);
+    border-bottom: 1px solid var(--gm-outline-variant);
+    gap: 6px;
+  }
+
+  :where([data-theme='google']) .data-tab-btn,
+  :where([data-theme='google']) .other-tabs-bar button {
+    border-radius: 9999px;
+    min-block-size: 30px;
+    min-inline-size: var(--target-size);
+    padding: 5px 12px;
+    color: var(--gm-ink-muted);
+    font-weight: 600;
+  }
+
+  :where([data-theme='google']) .data-tab-btn:hover:not(.active),
+  :where([data-theme='google']) .other-tabs-bar button:hover:not(.active) {
+    color: var(--gm-ink);
+    background: color-mix(in oklab, var(--gm-ink) 7%, transparent);
+  }
+
+  :where([data-theme='google']) .data-tab-btn.active,
+  :where([data-theme='google']) .other-tabs-bar button.active {
+    background: var(--gm-primary-container);
+    color: var(--gm-on-primary-container);
+    border-color: var(--gm-primary);
+  }
+
+  :where([data-theme='google']) .other-settings-banner {
+    background: var(--gm-primary-tint);
+    border: 1px solid color-mix(in oklab, var(--gm-primary) 28%, transparent);
+    border-radius: 14px;
+    padding: 10px 12px;
+    color: var(--gm-on-primary-container);
+  }
+
+  :where([data-theme='google']) .other-theme-row {
+    background: var(--gm-surface-low);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 14px;
+    padding: 10px 12px;
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .radio-card {
+    border: 1px solid var(--gm-outline-variant);
+    background: var(--gm-surface-low);
+    border-radius: 14px;
+    padding: 12px 14px;
+  }
+
+  :where([data-theme='google']) .radio-card:hover {
+    border-color: var(--gm-primary);
+    background: var(--gm-primary-tint);
+  }
+
+  :where([data-theme='google']) .radio-card:has(:checked) {
+    background: var(--gm-primary-container);
+    border-color: var(--gm-primary);
+    color: var(--gm-on-primary-container);
+  }
+
+  :where([data-theme='google']) .radio-card:has(:checked) p {
+    color: var(--gm-on-primary-container);
+  }
+
+  :where([data-theme='google']) .radio-card p,
+  :where([data-theme='google']) .empty-hint {
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .changelog-item {
+    border-bottom-color: var(--gm-surface-high);
+  }
+
+  :where([data-theme='google']) .data-filter-toolbar {
+    border-bottom-color: var(--gm-surface-high);
+  }
+
+  :where([data-theme='google']) .data-search-input {
+    border-radius: 9999px;
+    padding: 6px 14px;
+    background: var(--gm-surface);
+  }
+
+  :where([data-theme='google']) .data-search-input:focus {
+    background: var(--gm-surface-lowest);
+  }
+
+  :where([data-theme='google']) .tiiki-label {
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .tiiki-tabs button,
+  :where([data-theme='google']) .tiiki-chip-strip button {
+    border: 1px solid var(--gm-outline-variant);
+    background: var(--gm-surface-lowest);
+    color: var(--gm-ink);
+    border-radius: 9999px;
+    min-block-size: 26px;
+    min-inline-size: var(--target-size);
+    padding: 3px 11px;
+  }
+
+  :where([data-theme='google']) .tiiki-tabs button:hover:not(.active),
+  :where([data-theme='google']) .tiiki-chip-strip button:hover:not(.active) {
+    border-color: var(--gm-primary);
+    background: var(--gm-primary-tint);
+    color: var(--gm-primary);
+  }
+
+  :where([data-theme='google']) .tiiki-tabs button.active,
+  :where([data-theme='google']) .tiiki-chip-strip button.active {
+    background: var(--gm-primary-container);
+    color: var(--gm-on-primary-container);
+    border-color: var(--gm-primary);
+  }
+
+  :where([data-theme='google']) .tiiki-chip-strip {
+    background: var(--gm-surface-low);
+    border-bottom-color: var(--gm-outline-variant);
+  }
+
+  :where([data-theme='google']) .tiiki-filter-input {
+    border-radius: 9999px;
+    background: var(--gm-surface-lowest);
+    padding: 4px 12px;
+  }
+
+  :where([data-theme='google']) .data-grid-table th {
+    background: var(--gm-surface);
+    border-bottom: 2px solid var(--gm-outline-variant);
+    color: var(--gm-ink);
+    font-weight: 600;
+  }
+
+  :where([data-theme='google']) .data-grid-table td {
+    border-bottom: 1px solid var(--gm-surface-high);
+  }
+
+  :where([data-theme='google']) .data-row-clickable:hover {
+    background: var(--gm-primary-tint);
+  }
+
+  :where([data-theme='google']) .data-jump-hint {
+    color: var(--gm-primary);
+  }
+
+  :where([data-theme='google']) .data-truncate-note {
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .data-group-card {
+    background: var(--gm-surface-lowest);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 14px;
+    corner-shape: squircle;
+    color: var(--gm-ink);
+  }
+
+  :where([data-theme='google']) .data-group-card:hover {
+    border-color: var(--gm-primary);
+    background: var(--gm-primary-tint);
+    box-shadow: var(--gm-shadow-1);
+  }
+
+  :where([data-theme='google']) .data-group-sub {
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .data-group-count {
+    color: var(--gm-primary);
+  }
+
+  :where([data-theme='google']) .ratio-summary-banner {
+    background: var(--gm-primary-tint);
+    border: 1px solid color-mix(in oklab, var(--gm-primary) 24%, transparent);
+    border-radius: 14px;
+    color: var(--gm-on-primary-container);
+  }
+
+  /* ---------- Result & Confetti & Mistakes ---------- */
+  :where([data-theme='google']) .result-card {
+    background:
+      linear-gradient(90deg, #4285f4 0 25%, #ea4335 0 50%, #fbbc04 0 75%, #34a853 0 100%) top / 100% 3px no-repeat,
+      var(--gm-surface-lowest);
+    border-radius: 24px;
+    corner-shape: squircle;
+    padding: 24px 22px 20px;
+  }
+
+  :where([data-theme='google']) .result-complete-badge {
+    background: var(--gm-green);
+    color: #ffffff;
+    border-radius: 9999px;
+  }
+
+  :where([data-theme='google']) .result-new-record {
+    color: var(--gm-on-amber-container);
+    background: var(--gm-amber-container);
+    padding: 2px 12px;
+    border-radius: 9999px;
+    font-size: 0.88rem;
+  }
+
+  :where([data-theme='google']) .star-on {
+    color: #fbbc04;
+  }
+
+  :where([data-theme='google']) .star-off {
+    color: var(--gm-outline-variant);
+  }
+
+  :where([data-theme='google']) .result-stat-box {
+    background: var(--gm-surface);
+    border: 1px solid var(--gm-outline-variant);
+    border-radius: 14px;
+  }
+
+  :where([data-theme='google']) .result-stat-box span,
+  :where([data-theme='google']) .result-note {
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .result-mistakes-box {
+    background: var(--gm-amber-container);
+    border-color: color-mix(in oklab, var(--gm-amber) 55%, transparent);
+    border-radius: 14px;
+  }
+
+  :where([data-theme='google']) .result-mistakes-header {
+    color: var(--gm-on-amber-container);
+  }
+
+  :where([data-theme='google']) .result-missed-item {
+    border-color: color-mix(in oklab, var(--gm-amber) 55%, transparent);
+    background: var(--gm-surface-lowest);
+    color: var(--gm-on-amber-container);
+    border-radius: 9999px;
+    min-block-size: 26px;
+    min-inline-size: var(--target-size);
+    padding: 4px 10px;
+  }
+
+  :where([data-theme='google']) .result-missed-item:hover {
+    background: var(--gm-surface-low);
+    border-color: var(--gm-on-amber-container);
+  }
+
+  :where([data-theme='google']) .result-mistake-chip {
+    background: var(--gm-surface-lowest);
+    border-color: color-mix(in oklab, var(--gm-amber) 50%, transparent);
+    color: var(--gm-on-amber-container);
+  }
+
+  :where([data-theme='google']) .result-review-cleared {
+    background: var(--gm-green-container);
+    border-color: color-mix(in oklab, var(--gm-green) 45%, transparent);
+    color: var(--gm-on-green-container);
+    border-radius: 14px;
+  }
+
+  :where([data-theme='google']) .inspect-complete-bar {
+    background: rgba(255, 255, 255, 0.98);
+    border: 1px solid var(--gm-outline-variant);
+    box-shadow: var(--gm-shadow-3);
+  }
+
+  :where([data-theme='google']) .submode-mistake-pill {
+    background: var(--gm-amber-container);
+    color: var(--gm-on-amber-container);
+    border-color: color-mix(in oklab, var(--gm-amber) 50%, transparent);
+  }
+
+  :where([data-theme='google']) .mistake-guide-note {
+    background: var(--gm-surface);
+    border-radius: 12px;
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .mistake-bulk-box {
+    background: var(--gm-primary-tint);
+    border-color: color-mix(in oklab, var(--gm-primary) 35%, transparent);
+    border-radius: 14px;
+  }
+
+  :where([data-theme='google']) .mistake-bulk-title {
+    color: var(--gm-on-primary-container);
+  }
+
+  :where([data-theme='google']) .mistake-group-card {
+    border-color: var(--gm-outline-variant);
+    background: var(--gm-surface-lowest);
+    border-radius: 16px;
+    corner-shape: squircle;
+  }
+
+  :where([data-theme='google']) .mistake-group-sub {
+    color: var(--gm-ink-muted);
+  }
+
+  :where([data-theme='google']) .mistake-item-chip {
+    background: var(--gm-surface-low);
+    border-color: var(--gm-outline-variant);
+    border-radius: 9999px;
+    padding: 3px 10px;
+  }
+
+  :where([data-theme='google']) .mistake-count-pill {
+    background: var(--gm-red-container);
+    color: var(--gm-on-red-container);
+  }
+
+  :where([data-theme='google']) .mistake-chip-del {
+    color: var(--gm-ink-muted);
+    min-block-size: 24px;
+    min-inline-size: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+  }
+
+  :where([data-theme='google']) .mistake-chip-del:hover {
+    color: var(--gm-red);
+    background: var(--gm-red-container);
+  }
+
+  /* ---------- Responsive Adjustments in Theme Layer ---------- */
+  @media (max-width: 820px) {
+    :where([data-theme='google']) .quiz-pointing-card {
+      padding: 5px 9px;
+      min-block-size: 36px;
+    }
+
+    :where([data-theme='google']) .hud-toggle-btn {
+      padding: 4px 10px;
+      font-size: 0.74rem;
+    }
+  }
+
+  @media (max-width: 640px) {
+    :where([data-theme='google']) .hud-btn,
+    :where([data-theme='google']) .view-toggle-btn {
+      padding: 5px 10px;
+      font-size: 0.78rem;
+    }
+
+    :where([data-theme='google']) .view-area-select {
+      max-width: 190px;
+      font-size: 0.8rem;
+      padding: 4px 10px;
+    }
+
+    :where([data-theme='google']) .view-quick-search input {
+      width: 142px;
+      font-size: 0.78rem;
+      padding: 4px 10px;
+    }
+
+    :where([data-theme='google']) .hud-jump-bar {
+      border-radius: 9999px;
+      padding: 4px 8px;
+    }
+
+    :where([data-theme='google']) .hud-zoom-rail {
+      padding: 4px 3px;
+    }
+
+    :where([data-theme='google']) .hud-info-card,
+    :where([data-theme='google']) .map-stage.has-jump-bar .hud-info-card {
+      top: auto;
+      bottom: 8px;
+      left: 56px;
+      right: 8px;
+      width: auto;
+      max-height: 46%;
+      overflow-y: auto;
+      padding: 10px 12px;
+    }
+
+    :where([data-theme='google']) .hud-last-answer-pill,
+    :where([data-theme='google']) .map-stage.has-jump-bar .hud-last-answer-pill {
+      top: auto;
+      bottom: 8px;
+      left: 56px;
+      right: 8px;
+      max-width: none;
+    }
+
+    :where([data-theme='google']) .puzzle-piece-card {
+      flex: 0 0 82px;
+    }
+  }
+
+  /* Coarse pointer (touch) minimum target sizes */
+  @media (pointer: coarse) {
+    :root[data-theme='google'] {
+      --target-size: 40px;
+    }
+
+    :where([data-theme='google']) :is(
+      .btn-primary,
+      .btn-secondary,
+      .btn-ghost,
+      .btn-warning,
+      .btn-danger,
+      .hud-btn,
+      .view-toggle-btn,
+      .area-category-tabs button,
+      .submode-row-btn,
+      .quiz-choice-btn
+    ) {
+      min-block-size: 42px;
+    }
+
+    :where([data-theme='google']) :is(
+      .btn-xs,
+      .btn-hint1,
+      .btn-hint2,
+      .hud-toggle-btn,
+      .area-filter-pills button,
+      .jump-chip-btn,
+      .hud-tag-chip,
+      .hud-tag-manage-btn,
+      .hud-info-close,
+      .modal-close-btn,
+      .zoom-step-btn,
+      .zoom-reset-btn,
+      .tray-nav-btn,
+      .tray-toggle-btn,
+      .data-tab-btn,
+      .other-tabs-bar button,
+      .tiiki-tabs button,
+      .tiiki-chip-strip button,
+      .result-missed-item,
+      .mistake-chip-del,
+      .autosave-dismiss-btn,
+      .segmented-control button,
+      .btn-group button
+    ) {
+      min-block-size: 36px;
+      min-inline-size: 36px;
+    }
+
+    :where([data-theme='google']) .config-check,
+    :where([data-theme='google']) .custom-pref-chip,
+    :where([data-theme='google']) .radio-card {
+      min-block-size: 42px;
+    }
+
+    :where([data-theme='google']) .zoom-vertical-slider {
+      width: 36px;
+    }
+  }
+}
+
+@layer overrides {
+  /* Compositor-only motion with Material 3 standard easing */
+  @media (prefers-reduced-motion: no-preference) {
+    :where([data-theme='google']) :is(
+      .btn-primary,
+      .btn-secondary,
+      .btn-ghost,
+      .btn-warning,
+      .btn-danger,
+      .menu-btn,
+      .area-card-btn,
+      .hud-btn,
+      .view-toggle-btn,
+      .quiz-choice-btn,
+      .quiz-pointing-card,
+      .puzzle-piece-card,
+      .data-group-card
+    ) {
+      transition: transform 0.16s cubic-bezier(0.2, 0, 0, 1),
+        opacity 0.16s cubic-bezier(0.2, 0, 0, 1),
+        background-color 0.16s cubic-bezier(0.2, 0, 0, 1),
+        border-color 0.16s cubic-bezier(0.2, 0, 0, 1);
+    }
+  }
+
+  /* Low quality mode for Google theme */
+  [data-theme='google'][data-quality='low'] :is(
+    .title-visual-card,
+    .hud-topbar,
+    .view-topbar,
+    .hud-zoom-rail,
+    .hud-jump-bar,
+    .hud-info-card,
+    .hud-last-answer-pill,
+    .quiz-pointing-card,
+    .pref-hover-tooltip
+  ) {
+    backdrop-filter: none;
+  }
+
+  [data-theme='google'][data-quality='low'] :is(
+    .hint-area-ring,
+    .hint-fitted-pulse,
+    .confetti-piece,
+    .puzzle-miss-toast
+  ) {
+    animation: none;
+  }
+
+  [data-theme='google'][data-quality='low'] .confetti-layer {
+    display: none;
+  }
+
+  [data-theme='google'][data-quality='low'] .map-canvas-svg {
+    shape-rendering: optimizeSpeed;
+  }
+
+  /* High contrast preference */
+  @media (prefers-contrast: more) {
+    :root[data-theme='google'] {
+      --scrollbar-thumb: #000000;
+      --scrollbar-track: #ffffff;
+      --gm-ink: #000000;
+      --gm-ink-muted: #1f1f1f;
+      --gm-outline: #202124;
+      --gm-outline-variant: #3c4043;
+      --border: #3c4043;
+    }
+
+    :where([data-theme='google']) :is(
+      .menu-btn,
+      .area-card-btn,
+      .modal-card,
+      .hud-info-card,
+      .quiz-choice-btn,
+      .quiz-pointing-card,
+      .puzzle-piece-card,
+      .submode-row-btn,
+      .config-check,
+      .radio-card,
+      .custom-pref-chip
+    ) {
+      border-width: 2px;
+    }
+  }
+
+  /* Forced Colors Mode (Windows High Contrast) */
+  @media (forced-colors: active) {
+    :root[data-theme='google'] {
+      --scrollbar-thumb: ButtonText;
+      --scrollbar-track: Canvas;
+    }
+
+    :where([data-theme='google']) body,
+    :where([data-theme='google']) .app-root,
+    :where([data-theme='google']) .title-screen-shell,
+    :where([data-theme='google']) .modal-card,
+    :where([data-theme='google']) .hud-topbar,
+    :where([data-theme='google']) .view-topbar,
+    :where([data-theme='google']) .hud-info-card,
+    :where([data-theme='google']) .bottom-play-panel,
+    :where([data-theme='google']) .puzzle-tray,
+    :where([data-theme='google']) .puzzle-single-prompt {
+      background: Canvas;
+      background-image: none;
+      color: CanvasText;
+      box-shadow: none;
+      border-color: CanvasText;
+    }
+
+    :where([data-theme='google']) .title-visual-card,
+    :where([data-theme='google']) .result-card,
+    :where([data-theme='google']) .menu-btn,
+    :where([data-theme='google']) .area-card-btn,
+    :where([data-theme='google']) .hud-zoom-rail,
+    :where([data-theme='google']) .hud-jump-bar,
+    :where([data-theme='google']) .hud-last-answer-pill,
+    :where([data-theme='google']) .quiz-pointing-card,
+    :where([data-theme='google']) .quiz-choice-btn,
+    :where([data-theme='google']) .puzzle-piece-card,
+    :where([data-theme='google']) .submode-row-btn,
+    :where([data-theme='google']) .mistake-group-card,
+    :where([data-theme='google']) .data-group-card,
+    :where([data-theme='google']) .other-settings-banner,
+    :where([data-theme='google']) .other-theme-row,
+    :where([data-theme='google']) .config-check,
+    :where([data-theme='google']) .radio-card,
+    :where([data-theme='google']) .custom-pref-chip {
+      background: Canvas;
+      background-image: none;
+      color: CanvasText;
+      border: 1px solid CanvasText;
+      box-shadow: none;
+    }
+
+    :where([data-theme='google']) :is(
+      .btn-primary,
+      .btn-secondary,
+      .btn-ghost,
+      .btn-warning,
+      .btn-danger,
+      .hud-btn,
+      .view-toggle-btn,
+      .jump-chip-btn
+    ) {
+      background: ButtonFace;
+      color: ButtonText;
+      border: 1px solid ButtonText;
+      box-shadow: none;
+    }
+
+    :where([data-theme='google']) :is(
+      .active,
+      .selected,
+      .on,
+      .checked,
+      .config-check:has(:checked),
+      .radio-card:has(:checked),
+      .custom-pref-chip:has(:checked)
+    ) {
+      background: Highlight;
+      color: HighlightText;
+      border-color: Highlight;
+    }
+
+    :where([data-theme='google']) :is(
+      button,
+      a,
+      input,
+      select,
+      [tabindex]
+    ):focus-visible {
+      outline: 2px solid Highlight;
+      outline-offset: 2px;
+    }
+
+    :where([data-theme='google']) .hero-map-land,
+    :where([data-theme='google']) .custom-mini-land {
+      fill: Canvas;
+      stroke: CanvasText;
+    }
+
+    :where([data-theme='google']) .custom-mini-land.is-active {
+      fill: Highlight;
+      stroke: CanvasText;
+    }
+  }
+}

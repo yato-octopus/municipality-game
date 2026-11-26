@@ -92,6 +92,28 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
             <h4 className="config-section-heading">表示・地図</h4>
 
             <div className="config-slider-row">
+              <span>外観テーマ</span>
+              <div className="segmented-control" role="group" aria-label="外観テーマ">
+                <button
+                  type="button"
+                  className={config.uiTheme === 'classic' ? 'active' : ''}
+                  aria-pressed={config.uiTheme === 'classic'}
+                  onClick={() => onChange({ ...config, uiTheme: 'classic' })}
+                >
+                  標準
+                </button>
+                <button
+                  type="button"
+                  className={config.uiTheme === 'google' ? 'active' : ''}
+                  aria-pressed={config.uiTheme === 'google'}
+                  onClick={() => onChange({ ...config, uiTheme: 'google' })}
+                >
+                  Google モダン
+                </button>
+              </div>
+            </div>
+
+            <div className="config-slider-row">
               <span>地図スタイル</span>
               <div className="segmented-control" role="group" aria-label="地図スタイル">
                 <button

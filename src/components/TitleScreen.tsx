@@ -745,17 +745,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     return (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
         {hasAutoSave && (
-          <span
-            className="submode-mistake-pill"
-            style={{
-              marginLeft: 0,
-              background: '#ffedd5',
-              color: '#9a3412',
-              borderColor: '#fdba74',
-            }}
-          >
-            途中
-          </span>
+          <span className="submode-mistake-pill submode-autosave-pill">途中</span>
         )}
         {cardMistakes > 0 && (
           <span className="submode-mistake-pill" style={{ marginLeft: 0 }}>
@@ -813,9 +803,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                         transform={`translate(${OKINAWA_NATIONWIDE_TRANSFORM.tx}, ${OKINAWA_NATIONWIDE_TRANSFORM.ty}) scale(${OKINAWA_NATIONWIDE_TRANSFORM.scale})`}
                       >
                         <path
+                          className="hero-map-land"
                           d={prefsData.paths[p.code]}
-                          fill="#fbfaf6"
-                          stroke="#475569"
                           strokeWidth={1.1}
                           vectorEffect="non-scaling-stroke"
                         />
@@ -823,9 +812,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     ) : (
                       <path
                         key={p.code}
+                        className="hero-map-land"
                         d={prefsData.paths[p.code]}
-                        fill="#fbfaf6"
-                        stroke="#475569"
                         strokeWidth={1.0}
                         vectorEffect="non-scaling-stroke"
                       />
@@ -833,12 +821,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   )}
                 </g>
                 <rect
+                  className="hero-map-inset-frame"
                   x={28}
                   y={46}
                   width={280}
                   height={158}
-                  fill="none"
-                  stroke="#64748b"
                   strokeWidth={1}
                   strokeDasharray="4 3"
                   vectorEffect="non-scaling-stroke"
@@ -1607,11 +1594,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       const pathEl = (
                         <path
                           d={prefsData.paths[p.code]}
-                          fill={active ? '#fb923c' : '#fbfaf6'}
-                          stroke={active ? '#9a3412' : '#475569'}
                           strokeWidth={active ? 1.5 : 0.9}
                           vectorEffect="non-scaling-stroke"
-                          className="map-piece-clickable"
+                          className={`map-piece-clickable custom-mini-land ${active ? 'is-active' : ''}`}
                           onClick={toggle}
                         >
                           <title>{p.name}</title>
@@ -1951,21 +1936,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </div>
 
             <div className="modal-body other-body">
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '8px',
-                  padding: '8px 10px',
-                  borderRadius: '10px',
-                  background: 'var(--bg-muted)',
-                  flexWrap: 'wrap',
-                }}
-              >
-                <span style={{ fontSize: '0.82rem', fontWeight: 700 }}>
-                  地図スタイル・クイズ配置・ヒント表示などの詳細設定
-                </span>
+              <div className="other-settings-banner">
+                <span>地図スタイル・クイズ配置・ヒント表示などの詳細設定</span>
                 <button
                   type="button"
                   className="btn-primary btn-xs"
@@ -1976,6 +1948,28 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 >
                   ⚙ 詳細設定を開く
                 </button>
+              </div>
+
+              <div className="other-theme-row">
+                <span>外観テーマ</span>
+                <div className="segmented-control" role="group" aria-label="外観テーマ">
+                  <button
+                    type="button"
+                    className={config.uiTheme === 'classic' ? 'active' : ''}
+                    aria-pressed={config.uiTheme === 'classic'}
+                    onClick={() => onConfigChange({ ...config, uiTheme: 'classic' })}
+                  >
+                    標準
+                  </button>
+                  <button
+                    type="button"
+                    className={config.uiTheme === 'google' ? 'active' : ''}
+                    aria-pressed={config.uiTheme === 'google'}
+                    onClick={() => onConfigChange({ ...config, uiTheme: 'google' })}
+                  >
+                    Google モダン
+                  </button>
+                </div>
               </div>
 
               {otherTab === 'changelog' && (

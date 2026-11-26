@@ -431,21 +431,7 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
               <div
                 role="listbox"
                 aria-label="検索候補"
-                style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 4px)',
-                  left: 0,
-                  minWidth: '220px',
-                  maxWidth: '300px',
-                  maxHeight: '260px',
-                  overflowY: 'auto',
-                  background: '#ffffff',
-                  border: '1px solid var(--border)',
-                  borderRadius: '10px',
-                  boxShadow: 'var(--shadow-lg)',
-                  zIndex: 80,
-                  padding: '4px',
-                }}
+                className="view-quick-search-dropdown"
               >
                 {quickSearchResults.length === 0 ? (
                   <div className="muted" style={{ padding: '8px 10px' }}>
@@ -692,7 +678,7 @@ export const ViewModeScreen: React.FC<ViewModeScreenProps> = ({
             </div>
 
             {selectedPiece.desc && (
-              <div style={{ fontSize: '0.8rem', lineHeight: 1.45, color: 'var(--ink)' }}>
+              <div className="hud-info-desc">
                 {selectedPiece.desc}
               </div>
             )}
