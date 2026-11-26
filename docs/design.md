@@ -1,4 +1,4 @@
-# 設計書：全国市区町村パズル＆地理クイズ アーキテクチャ設計（v2.1.0）
+# 設計書：全国市区町村パズル＆地理クイズ アーキテクチャ設計（v2.2.0）
 
 ## 1. システム全体構成
 
@@ -24,35 +24,36 @@ municipality-game/
 │           ├── index.json         # 全1,747市区町村メタデータ(うち792市・人口・面積・郡・地域区分・Wiki)
 │           └── all_paths.json     # 全1,747市区町村の統合済み高精度SVGパス(北海道・都島しょ調整済)
 ├── src/
-│   ├── version.ts                 # APP_VERSION / APP_VERSION_LABEL ('v2.1.0', package.json と同期)
+│   ├── version.ts                 # APP_VERSION / APP_VERSION_LABEL ('v2.2.0', package.json と同期)
 │   ├── types/
 │   │   └── game.ts                # GameModeId, QuizChoiceLayout, HintAreaOverlay, SaveSlot, ConfigState 等
 │   ├── data/
-│   │   ├── gameCatalog.ts         # 日本・都道府県(47)・市区町村・市(全国/地方別)・自然地理の全モード定義
+│   │   ├── gameCatalog.ts         # 日本・都道府県(47)・市区町村・市(全国/地方別)・自然地理・8地方グループ定義
 │   │   ├── prefColors.ts          # 隣接都道府県が同色にならない低彩度5色カラーリング定義
 │   │   └── similarNames.ts        # 「似た名前」グループ辞書
 │   ├── services/
-│   │   ├── mapDataLoader.ts       # japan_prefs / muni (全市区町村・市フィルタ) / geography_100 キャッシュ付ローダー
+│   │   ├── mapDataLoader.ts       # japan_prefs / muni / geography_100 キャッシュ付ローダー（v付きキャッシュバスティング＆失敗キャッシュ解除）
 │   │   ├── storageService.ts      # AutoSave / ManualSave / ClearRecords / Mistakes / Tags / Config 永続化
-│   │   ├── soundService.ts        # Web Audio API による効果音 (はめ込み鐘・正解・不正解・UIクリック) & 振動
-│   │   └── dataAnalyzer.ts        # DataTable 11タブ (漢字・ひらカナ・文字数・まち/ちょう・むら/そん・似た名前等) 集計
+│   │   ├── soundService.ts        # Web Audio API による効果音（AudioContext resume 連動・消音対応） & 振動
+│   │   └── dataAnalyzer.ts        # DataTable 11タブ集計・カタカナ正規化検索・昇降順ソート
 │   ├── hooks/
-│   │   └── useMapViewport.ts      # 左クリックパン・慣性減衰・ズーム・地方ジャンプ・リアルタイム座標変換フック
+│   │   ├── useMapViewport.ts      # 左クリックパン・境界クランプ・カーソル固定ズーム・リサイズ比率保持フック
+│   │   └── useEscapeClose.ts      # モーダルスタック連動 Esc キー閉じ＆背景スクロールロックフック
 │   └── components/
-│       ├── TitleScreen.tsx        # タイトル(リリースバージョン表示) / エリア選択4タブ / GameInfo / カスタム / ランダム / その他
-│       ├── MistakeReviewModal.tsx # 間違えた問題の記憶一覧・モード別/まとめ復習起動モーダル
-│       ├── MapCanvas.tsx          # 白地図/標高図・低彩度隣接県塗り分け・県境オーバーレイ・県ホバーツールチップ・ヒント1/2描画
-│       ├── GameSessionShell.tsx   # セッション統括・2段階ヒント制御・ポインティング座標連動・オートセーブ
-│       ├── HudOverlay.tsx         # 共通ヘッダ(タイマー/Miss/ヒント回数/進捗/回答後名前トグル/Save/Menu/Back)・Zoom・地方移動・Info/Tag
-│       ├── ConfigModal.tsx        # 全設定トグル(ポインティング選択肢・回答後名前表示等)＆スライダーモーダル
-│       ├── PuzzleGame.tsx         # パズル本体(ピース一覧トレイ・ドラッグ＆ドロップ・スナップ判定・2段階ヒント)
-│       ├── QuizGame.tsx           # 6択クイズ＋地理クイズ (下部表示 / 地図上ポインティング選択肢切替・2段階ヒント)
-│       ├── YomikataGame.tsx       # 読み方モード＋県庁読み方 (キーボード入力 + 日本語IME Enter連続回答・2段階ヒント)
-│       ├── ViewModeScreen.tsx     # 閲覧モード (日本/市区町村/全国市/47都道府県・隣接県塗り分け・県ホバーツールチップ)
-│       ├── DataTableModal.tsx     # データ一覧モーダル (11種ソートタブ・地域フィルタ・検索・SubTable)
-│       ├── TagManagerModal.tsx    # タグ管理モーダル (DataTable2: 作成・ロック・名前変更・削除・一覧)
-│       ├── SaveSlotsModal.tsx     # 手動セーブ・上書き・ロード管理ダイアログ
-│       └── ResultOverlay.tsx      # Complete紙吹雪 + スコア・NewRecord・誤答復習・完成図をみる・リトライ・シェア
+│       ├── TitleScreen.tsx        # タイトル(進捗サマリー・バージョン表示) / エリア選択4タブ(検索・フィルタ・直接カード) / GameInfo / カスタム / ランダム / 設定案内
+│       ├── MistakeReviewModal.tsx # 間違えた問題の記憶一覧・モード別/まとめ復習起動（2段階確認付き）
+│       ├── MapCanvas.tsx          # 白地図/色分け図・画面px基準ラベル衝突回避・県ホバー・自然地理コントラスト・誤答ハイライト
+│       ├── GameSessionShell.tsx   # セッション統括・非20Hz高精度計測・厳密な誤答/ヒント記録・ポインティング座標連動・オートセーブ
+│       ├── HudOverlay.tsx         # 共通ヘッダ(分離LiveClock/進捗バー/消音/Miss/ヒント/Save/Menu/Back)・.map-stage・Zoom・地方移動・直前正解ピル
+│       ├── ConfigModal.tsx        # 統一設定モーダル（セグメント切替・モード別整理・描画負荷切替・2段階リトライ確認）
+│       ├── PuzzleGame.tsx         # React.memo化パズル本体（DOM refドラッグ追従・トレイ検索＆ソート・非表示時単一プロンプト・2段階ヒント）
+│       ├── QuizGame.tsx           # React.memo化6択/地理クイズ（地図上ポインティング狭幅上下3+3配置・1-6/H/F/Lキー操作・答え確認）
+│       ├── YomikataGame.tsx       # React.memo化読み方（常駐フォーカス維持・Safari IME誤爆防止・都府県サフィックス柔軟判定・2段階ヒント）
+│       ├── ViewModeScreen.tsx     # 閲覧モード（自然地理100アトラス・地名クイック検索・.map-stage・ズームスライダー・プレイ/タグ練習導線）
+│       ├── DataTableModal.tsx     # データ一覧モーダル（コンテキスト別タブ・昇降順・増分表示・大量チップ検索＆スクロール）
+│       ├── TagManagerModal.tsx    # タグ管理モーダル（エリア内外件数表示・タグ外し・インライン編集・タグ練習起動）
+│       ├── SaveSlotsModal.tsx     # 手動セーブ・上書き・ロード管理ダイアログ（2段階確認・保存トースト付き）
+│       └── ResultOverlay.tsx      # Complete紙吹雪 + 初回正答率・厳密星評価・誤答クリック確認・復習・完成図をみる・エリア選択へ戻る
 └── ...
 ```
 
@@ -87,10 +88,10 @@ municipality-game/
 ## 3. コンポーネント＆状態遷移設計
 
 ### 3.1 コア状態管理 (`App.tsx`)
-`AppView` は以下のユニオン型で管理し、画面遷移の不整合を防ぐ：
-- `title`: タイトル画面（リリースバージョン `v2.1.0` 表示）＋サブモーダル（エリア選択4タブ、`GameInfo`、手動ロード、`カスタム`、`ランダム`、`間違えた問題復習`、`その他`）
+`AppView` は以下のユニオン型で管理し、`returnTo: 'title' | 'areas'` により呼び出し元画面への正確な復帰と `data-quality={config.quality}` による描画負荷制御を両立する：
+- `title`: タイトル画面（リリースバージョン `v2.2.0`・学習進捗サマリー表示）＋サブモーダル（エリア選択4タブ、`GameInfo`、手動ロード、`カスタム`、`ランダム`、`間違えた問題復習`、統一設定・その他）
 - `play`: アクティブなプレイセッション（`puzzle` | `quiz` | `yomikata` | `geography_quiz`）
-- `view`: 閲覧モード（＋ `DataTable`）
+- `view`: 閲覧モード（`initialFocusPieceId` 指定フォーカス・自然地理100選アトラス・`DataTable`・`TagManager`）
 
 ### 3.2 低彩度隣接県塗り分け＆都道府県ホバーツールチップ (`prefColors.ts`, `MapCanvas.tsx`)
 - **隣接県5色パレット (`src/data/prefColors.ts`)**:

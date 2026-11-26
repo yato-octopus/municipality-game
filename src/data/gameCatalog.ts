@@ -1,4 +1,9 @@
-import type { AreaDefinition, AreaSubMode, PrefectureMeta } from '../types/game';
+import type {
+  AreaDefinition,
+  AreaSubMode,
+  GeographySubCategory,
+  PrefectureMeta,
+} from '../types/game';
 
 /** 地方定義・ジャンプ座標 */
 export const JAPAN_REGION_JUMPS: {
@@ -18,6 +23,38 @@ export const JAPAN_REGION_JUMPS: {
   { id: 'sikoku', label: '四国', short: '四国', prefCodes: ['36', '37', '38', '39'], center: [266, 702], zoom: 4.5 },
   { id: 'kyuusyuu', label: '九州', short: '九州', prefCodes: ['40', '41', '42', '43', '44', '45', '46'], center: [148, 760], zoom: 3.4 },
   { id: 'okinawa', label: '沖縄', short: '沖縄', prefCodes: ['47'], center: [160, 125], zoom: 3.6 },
+];
+
+/** 47都道府県 8地方グループ（エリア選択・閲覧セレクト共通） */
+export const PREF_REGION_GROUPS: {
+  id: string;
+  label: string;
+  prefCodes: string[];
+}[] = [
+  { id: 'hokkaido', label: '北海道', prefCodes: ['01'] },
+  { id: 'tohoku', label: '東北地方', prefCodes: ['02', '03', '04', '05', '06', '07'] },
+  { id: 'kantou', label: '関東地方', prefCodes: ['08', '09', '10', '11', '12', '13', '14'] },
+  { id: 'tyuubu', label: '中部地方', prefCodes: ['15', '16', '17', '18', '19', '20', '21', '22', '23'] },
+  { id: 'kinki', label: '近畿地方', prefCodes: ['24', '25', '26', '27', '28', '29', '30'] },
+  { id: 'tyuugoku', label: '中国地方', prefCodes: ['31', '32', '33', '34', '35'] },
+  { id: 'sikoku', label: '四国地方', prefCodes: ['36', '37', '38', '39'] },
+  { id: 'kyuusyuu_okinawa', label: '九州・沖縄地方', prefCodes: ['40', '41', '42', '43', '44', '45', '46', '47'] },
+];
+
+/** 閲覧モード用・日本の自然地理100選プリセット */
+export const GEOGRAPHY_VIEW_AREAS: {
+  id: string;
+  name: string;
+  geoCategory?: Exclude<GeographySubCategory, 'capital_q' | 'capital_y'>;
+  modeId?: string;
+  approxCount: number;
+}[] = [
+  { id: 'geo_all', name: '日本の自然地理100選（すべて）', approxCount: 100 },
+  { id: 'geo_mountains', name: '主な山脈・山地・高地', geoCategory: 'mountains', modeId: '00_japan_Mountains', approxCount: 24 },
+  { id: 'geo_mountain', name: '主な山', geoCategory: 'mountain', modeId: '00_japan_Mountain', approxCount: 21 },
+  { id: 'geo_river', name: '主な河川', geoCategory: 'river', modeId: '00_japan_River', approxCount: 16 },
+  { id: 'geo_plain', name: '主な平野', geoCategory: 'plain', modeId: '00_japan_Plain', approxCount: 17 },
+  { id: 'geo_lake', name: '主な湖', geoCategory: 'lake', modeId: '00_japan_Lake', approxCount: 22 },
 ];
 
 const TIHOU_MUNI_GROUPS: { key: string; label: string; prefCodes: string[] }[] = [
@@ -112,10 +149,13 @@ export function buildPrefectureModes(prefCode: string, prefName: string): AreaSu
     base.push(
       { id: '13_tokyo23_P', label: '東京23区 パズル', shortLabel: '23区 P', playKind: 'puzzle', regionFilter: 'tokyo23' },
       { id: '13_tokyo23_Q', label: '東京23区 クイズ', shortLabel: '23区 Q', playKind: 'quiz', regionFilter: 'tokyo23' },
+      { id: '13_tokyo23_Y', label: '東京23区 読み方', shortLabel: '23区 読', playKind: 'yomikata', regionFilter: 'tokyo23' },
       { id: '13_tokyo23Other_P', label: '東京23区外 パズル', shortLabel: '23区外 P', playKind: 'puzzle', regionFilter: 'tokyo23Other' },
       { id: '13_tokyo23Other_Q', label: '東京23区外 クイズ', shortLabel: '23区外 Q', playKind: 'quiz', regionFilter: 'tokyo23Other' },
+      { id: '13_tokyo23Other_Y', label: '東京23区外 読み方', shortLabel: '23区外 読', playKind: 'yomikata', regionFilter: 'tokyo23Other' },
       { id: '13_tokyo_island_P', label: '東京都島しょ部 パズル', shortLabel: '島しょ P', playKind: 'puzzle', regionFilter: 'tokyo_island' },
       { id: '13_tokyo_island_Q', label: '東京都島しょ部 クイズ', shortLabel: '島しょ Q', playKind: 'quiz', regionFilter: 'tokyo_island' },
+      { id: '13_tokyo_island_Y', label: '東京都島しょ部 読み方', shortLabel: '島しょ 読', playKind: 'yomikata', regionFilter: 'tokyo_island' },
     );
   }
   return base;

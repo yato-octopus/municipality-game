@@ -16,38 +16,70 @@ export interface KanaSummaryItem {
   chars: string;
 }
 
+export type SortDirection = 'asc' | 'desc';
+
 const KANJI_RE = /[\u4e00-\u9fff\u3400-\u4dbf々ヶ]/g;
 const HIRAGANA_RE = /[\u3041-\u3096]/g;
 const KATAKANA_RE = /[\u30a1-\u30f6ー]/g;
 
+/** Normalize katakana -> hiragana + lowercase for forgiving Japanese keyword search */
+export function normalizeSearchText(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[\u30a1-\u30f6]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60));
+}
+
 export function filterPiecesByKeyword(pieces: MapPieceItem[], query: string): MapPieceItem[] {
-  const q = query.trim().toLowerCase();
+  const q = normalizeSearchText(query);
   if (!q) return pieces;
   return pieces.filter(
     (p) =>
-      p.name.toLowerCase().includes(q) ||
-      p.ruby.toLowerCase().includes(q) ||
-      (p.prefName ?? '').toLowerCase().includes(q) ||
-      p.regionLabel.toLowerCase().includes(q) ||
-      p.countyLabel.toLowerCase().includes(q) ||
+      normalizeSearchText(p.name).includes(q) ||
+      normalizeSearchText(p.ruby).includes(q) ||
+      normalizeSearchText(p.prefName ?? '').includes(q) ||
+      normalizeSearchText(p.regionLabel).includes(q) ||
+      normalizeSearchText(p.countyLabel).includes(q) ||
+      normalizeSearchText(p.adminAreaLabel).includes(q) ||
+      normalizeSearchText(p.desc ?? '').includes(q) ||
       p.id.toLowerCase().includes(q),
   );
 }
 
-export function sortPiecesByCode(pieces: MapPieceItem[]): MapPieceItem[] {
-  return [...pieces].sort((a, b) => a.id.localeCompare(b.id, 'en'));
+export function sortPiecesByCode(
+  pieces: MapPieceItem[],
+  dir: SortDirection = 'asc',
+): MapPieceItem[] {
+  const sign = dir === 'asc' ? 1 : -1;
+  return [...pieces].sort((a, b) => sign * a.id.localeCompare(b.id, 'en'));
 }
 
-export function sortPiecesByKana(pieces: MapPieceItem[]): MapPieceItem[] {
-  return [...pieces].sort((a, b) => a.ruby.localeCompare(b.ruby, 'ja'));
+export function sortPiecesByKana(
+  pieces: MapPieceItem[],
+  dir: SortDirection = 'asc',
+): MapPieceItem[] {
+  const sign = dir === 'asc' ? 1 : -1;
+  return [...pieces].sort((a, b) => sign * a.ruby.localeCompare(b.ruby, 'ja'));
 }
 
-export function sortPiecesByPopulation(pieces: MapPieceItem[]): MapPieceItem[] {
-  return [...pieces].sort((a, b) => b.population - a.population);
+export function sortPiecesByPopulation(
+  pieces: MapPieceItem[],
+  dir: SortDirection = 'desc',
+): MapPieceItem[] {
+  const sign = dir === 'desc' ? 1 : -1;
+  return [...pieces].sort(
+    (a, b) => sign * (b.population - a.population) || a.id.localeCompare(b.id, 'en'),
+  );
 }
 
-export function sortPiecesByArea(pieces: MapPieceItem[]): MapPieceItem[] {
-  return [...pieces].sort((a, b) => b.areaKm2 - a.areaKm2);
+export function sortPiecesByArea(
+  pieces: MapPieceItem[],
+  dir: SortDirection = 'desc',
+): MapPieceItem[] {
+  const sign = dir === 'desc' ? 1 : -1;
+  return [...pieces].sort(
+    (a, b) => sign * (b.areaKm2 - a.areaKm2) || a.id.localeCompare(b.id, 'en'),
+  );
 }
 
 export function analyzeKanzi(pieces: MapPieceItem[]): SubTableGroup[] {
@@ -68,7 +100,7 @@ export function analyzeKanzi(pieces: MapPieceItem[]): SubTableGroup[] {
     .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'ja'))
     .map(([ch, items]) => ({
       key: `kanji_${ch}`,
-      label: `「${ch}」を含む自治体`,
+      label: `「${ch}」を含む名称`,
       subLabel: `出現数: ${items.length}件`,
       count: items.length,
       items,
@@ -111,17 +143,22 @@ export function analyzeMoziCount(pieces: MapPieceItem[]): SubTableGroup[] {
     }));
 }
 
+const EXTRA_EXACT_STEMS_BY_GROUP: Record<string, readonly string[]> = {
+  'なか・なかがわ': ['那珂川'],
+  'いず': ['伊豆の国'],
+};
+
 export function analyzeSimilarNames(pieces: MapPieceItem[]): SubTableGroup[] {
   const groups: SubTableGroup[] = [];
-  const usedGroupKeys = new Set<string>();
 
   for (const def of SIMILAR_NAME_GROUPS) {
+    const extraStems = EXTRA_EXACT_STEMS_BY_GROUP[def.key] ?? [];
+    const allowedStems = new Set([...def.stems, ...extraStems]);
     const matched = pieces.filter((p) => {
       const stem = p.name.replace(/[市町村区都府県]$/, '');
-      return def.stems.some((s) => stem === s || p.name.startsWith(s));
+      return allowedStems.has(stem);
     });
     if (matched.length >= 2) {
-      usedGroupKeys.add(def.key);
       groups.push({
         key: `sim_${def.key}`,
         label: def.key,

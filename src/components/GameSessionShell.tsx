@@ -8,6 +8,8 @@ import {
   playWrongBuzz,
   triggerVibrate,
 } from '../services/soundService';
+import { loadMistakes } from '../services/storageService';
+import { createSessionId } from '../utils/formatters';
 import type { LoadedSessionMap } from '../services/mapDataLoader';
 import type {
   BBox,
@@ -47,6 +49,7 @@ interface GameSessionShellProps {
     questionCount: number,
     maxCount: number,
     isCustomOrRandom: boolean,
+    hintsUsed?: number,
   ) => { isNewBest: boolean };
   onRecordMistake: (
     entry: Omit<MistakeEntry, 'key' | 'missCount' | 'lastMissedAt'>,
@@ -102,6 +105,17 @@ function computeHint1Area(
   };
 }
 
+function isEditableElement(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return (
+    tag === 'INPUT' ||
+    tag === 'TEXTAREA' ||
+    tag === 'SELECT' ||
+    target.isContentEditable
+  );
+}
+
 export const GameSessionShell: React.FC<GameSessionShellProps> = ({
   spec,
   restoredProgress,
@@ -131,7 +145,12 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const [sessionWrongIds, setSessionWrongIds] = useState<Set<string>>(new Set());
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [elapsedMs, setElapsedMs] = useState(0);
+
+  // Elapsed timer split into base + anchor so HudOverlay's LiveClock ticks without re-rendering this shell
+  const [baseElapsedMs, setBaseElapsedMs] = useState(0);
+  const [runningSinceMs, setRunningSinceMs] = useState<number | null>(null);
+  const [finalElapsedMs, setFinalElapsedMs] = useState(0);
+
   const [misses, setMisses] = useState(0);
   const [hintsUsed, setHintsUsed] = useState(0);
 
@@ -142,7 +161,12 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
 
   const [selectedPiece, setSelectedPiece] = useState<MapPieceItem | null>(null);
   const [inspectedPiece, setInspectedPiece] = useState<MapPieceItem | null>(null);
+  const [lastAnsweredPiece, setLastAnsweredPiece] = useState<MapPieceItem | null>(null);
   const [hoverTargetId, setHoverTargetId] = useState<string | null>(null);
+  const [puzzleMissToast, setPuzzleMissToast] = useState<{
+    nonce: number;
+    text: string;
+  } | null>(null);
   const [hintState, setHintState] = useState<{
     pieceId: string;
     stage: 0 | 1 | 2;
@@ -151,8 +175,24 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
   } | null>(null);
   const [hintFittedPieceId, setHintFittedPieceId] = useState<string | null>(null);
 
+  const [mapStageEl, setMapStageEl] = useState<HTMLDivElement | null>(null);
+  const handleStageRef = useCallback((node: HTMLDivElement | null) => {
+    setMapStageEl(node);
+  }, []);
+
+  // Synchronous authoritative refs preventing any stale-state race on last question / Hint 2 / give-up
+  const completedIdsRef = useRef<Set<string>>(completedIds);
+  const sessionWrongIdsRef = useRef<Set<string>>(sessionWrongIds);
+  const missesRef = useRef<number>(misses);
+  const hintsUsedRef = useRef<number>(hintsUsed);
+  const baseElapsedMsRef = useRef<number>(baseElapsedMs);
+  const runningSinceMsRef = useRef<number | null>(runningSinceMs);
+
   const hint1ChargedPieceIdsRef = useRef<Set<string>>(new Set());
   const hintFittedTimerRef = useRef<number | null>(null);
+  const advanceTimerRef = useRef<number | null>(null);
+  const missToastTimerRef = useRef<number | null>(null);
+  const lastNonZeroVolumeRef = useRef<number>(config.seVolume > 0 ? config.seVolume : 70);
 
   const [showConfig, setShowConfig] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -160,6 +200,25 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
 
   const svgElRef = useRef<SVGSVGElement | null>(null);
   const liveViewBoxListenersRef = useRef<Set<() => void>>(new Set());
+
+  useEffect(() => {
+    if (config.seVolume > 0) {
+      lastNonZeroVolumeRef.current = config.seVolume;
+    }
+  }, [config.seVolume]);
+
+  const getCurrentElapsedMs = useCallback(() => {
+    const since = runningSinceMsRef.current;
+    if (since == null) return baseElapsedMsRef.current;
+    return baseElapsedMsRef.current + Math.max(0, performance.now() - since);
+  }, []);
+
+  const clearAdvanceTimer = useCallback(() => {
+    if (advanceTimerRef.current != null) {
+      window.clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
+  }, []);
 
   const handleLiveViewBoxChange = useCallback(() => {
     for (const listener of liveViewBoxListenersRef.current) {
@@ -182,6 +241,8 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
   useEffect(() => {
     return () => {
       if (hintFittedTimerRef.current != null) window.clearTimeout(hintFittedTimerRef.current);
+      if (advanceTimerRef.current != null) window.clearTimeout(advanceTimerRef.current);
+      if (missToastTimerRef.current != null) window.clearTimeout(missToastTimerRef.current);
     };
   }, []);
 
@@ -200,18 +261,33 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
           .filter((x): x is MapPieceItem => Boolean(x));
         if (ordered.length === 0) ordered = shuffleArray(res.targetPieces);
         const comp = new Set(restoredProgress.completedIds);
+        const wrong = new Set(restoredProgress.sessionWrongIds ?? []);
+        completedIdsRef.current = comp;
+        sessionWrongIdsRef.current = wrong;
+        missesRef.current = restoredProgress.misses;
+        hintsUsedRef.current = restoredProgress.hintsUsed;
+        baseElapsedMsRef.current = restoredProgress.elapsedMs;
+        runningSinceMsRef.current = null;
         setCompletedIds(comp);
-        setSessionWrongIds(new Set(restoredProgress.sessionWrongIds ?? []));
-        setElapsedMs(restoredProgress.elapsedMs);
+        setSessionWrongIds(wrong);
+        setBaseElapsedMs(restoredProgress.elapsedMs);
+        setRunningSinceMs(null);
         setMisses(restoredProgress.misses);
         setHintsUsed(restoredProgress.hintsUsed);
         const firstUn = ordered.findIndex((p) => !comp.has(p.id));
         setCurrentIndex(firstUn >= 0 ? firstUn : 0);
       } else {
         ordered = shuffleArray(res.targetPieces);
+        completedIdsRef.current = new Set();
+        sessionWrongIdsRef.current = new Set();
+        missesRef.current = 0;
+        hintsUsedRef.current = 0;
+        baseElapsedMsRef.current = 0;
+        runningSinceMsRef.current = null;
         setCompletedIds(new Set());
         setSessionWrongIds(new Set());
-        setElapsedMs(0);
+        setBaseElapsedMs(0);
+        setRunningSinceMs(null);
         setMisses(0);
         setHintsUsed(0);
         setCurrentIndex(0);
@@ -225,37 +301,46 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spec.sessionId]);
 
-  // Ready -> Go! transition once loaded
+  // Ready -> Go! transition once loaded (shorter on review retries, skippable)
   useEffect(() => {
-    if (!loadedMap) return;
-    const t1 = window.setTimeout(() => setReadyStage('go'), 550);
-    const t2 = window.setTimeout(() => setReadyStage('playing'), 950);
+    if (!loadedMap || readyStage === 'playing') return;
+    const goDelay = spec.isReviewMode ? 180 : 450;
+    const playDelay = spec.isReviewMode ? 400 : 850;
+    const t1 = window.setTimeout(() => setReadyStage('go'), goDelay);
+    const t2 = window.setTimeout(() => setReadyStage('playing'), playDelay);
     return () => {
       window.clearTimeout(t1);
       window.clearTimeout(t2);
     };
-  }, [loadedMap]);
+  }, [loadedMap, readyStage, spec.isReviewMode]);
+
+  const handleSkipReady = useCallback(() => {
+    if (loadedMap && readyStage !== 'playing') {
+      setReadyStage('playing');
+    }
+  }, [loadedMap, readyStage]);
+
+  const anyModalOpen = showConfig || showSaveModal || showTagModal;
 
   // Game stopwatch paused during overlays, countdown, and after completion
-  const paused =
-    !loadedMap ||
-    readyStage !== 'playing' ||
-    isCompleted ||
-    showConfig ||
-    showSaveModal ||
-    showTagModal;
+  const paused = !loadedMap || readyStage !== 'playing' || isCompleted || anyModalOpen;
 
   useEffect(() => {
-    if (paused) return;
-    let last = performance.now();
-    const intervalMs = config.fpsMode === 'low' ? 100 : 50;
-    const id = window.setInterval(() => {
+    if (paused) {
+      if (runningSinceMsRef.current != null) {
+        const nextBase =
+          baseElapsedMsRef.current + Math.max(0, performance.now() - runningSinceMsRef.current);
+        baseElapsedMsRef.current = nextBase;
+        runningSinceMsRef.current = null;
+        setBaseElapsedMs(nextBase);
+        setRunningSinceMs(null);
+      }
+    } else if (runningSinceMsRef.current == null) {
       const now = performance.now();
-      setElapsedMs((prev) => prev + (now - last));
-      last = now;
-    }, intervalMs);
-    return () => window.clearInterval(id);
-  }, [paused, config.fpsMode]);
+      runningSinceMsRef.current = now;
+      setRunningSinceMs(now);
+    }
+  }, [paused]);
 
   const initialBBox: BBox = loadedMap?.viewBBox ?? [22, 34, 940, 920];
   const {
@@ -288,11 +373,6 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     [svgRef],
   );
 
-  const elapsedMsRef = useRef(elapsedMs);
-  useEffect(() => {
-    elapsedMsRef.current = elapsedMs;
-  }, [elapsedMs]);
-
   const buildProgressSnapshot = useCallback(
     (
       nextCompleted: Set<string>,
@@ -314,11 +394,11 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
       completedIds: Array.from(nextCompleted),
       sessionWrongIds: Array.from(nextWrong),
       currentIndex: nextIdx,
-      elapsedMs: elapsedMsRef.current,
+      elapsedMs: getCurrentElapsedMs(),
       misses: nextMisses,
       hintsUsed: nextHints,
     }),
-    [spec, orderedTargets],
+    [spec, orderedTargets, getCurrentElapsedMs],
   );
 
   // Auto-save on page hide/unload when setting is active or exiting
@@ -327,11 +407,11 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     snapshotRef.current = () => {
       if (spec.isCustomOrRandom || isCompleted || orderedTargets.length === 0) return null;
       return buildProgressSnapshot(
-        completedIds,
-        sessionWrongIds,
+        completedIdsRef.current,
+        sessionWrongIdsRef.current,
         currentIndex,
-        misses,
-        hintsUsed,
+        missesRef.current,
+        hintsUsedRef.current,
       );
     };
   });
@@ -355,6 +435,11 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
   }, [config.autoSaveTiming, onSaveAuto]);
 
   const activePiece = orderedTargets[currentIndex] ?? null;
+
+  const targetIdSet = useMemo(
+    () => new Set(orderedTargets.map((p) => p.id)),
+    [orderedTargets],
+  );
 
   const focusPieceSmooth = useCallback(
     (piece: MapPieceItem) => {
@@ -394,15 +479,103 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePiece?.id, loadedMap, readyStage, spec.playKind, isCompleted]);
 
+  // Global keyboard handler for Ready skip, Escape (info card -> puzzle selection), and map zoom (+/-/0)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (anyModalOpen || e.isComposing) return;
+      if (readyStage !== 'playing' && loadedMap) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          setReadyStage('playing');
+        }
+        return;
+      }
+      if (e.key === 'Escape' && !isCompleted) {
+        if (inspectedPiece) {
+          e.preventDefault();
+          setInspectedPiece(null);
+          return;
+        }
+        if (selectedPiece && config.showPieceList) {
+          e.preventDefault();
+          setSelectedPiece(null);
+          setHintState(null);
+          return;
+        }
+      }
+      if (
+        !isEditableElement(e.target) &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        loadedMap &&
+        !isCompleted
+      ) {
+        if (e.key === '+' || e.key === '=') {
+          e.preventDefault();
+          zoomByFactor(1.4);
+        } else if (e.key === '-') {
+          e.preventDefault();
+          zoomByFactor(1 / 1.4);
+        } else if (e.key === '0') {
+          e.preventDefault();
+          fitBBox(loadedMap.viewBBox);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [
+    anyModalOpen,
+    readyStage,
+    loadedMap,
+    isCompleted,
+    inspectedPiece,
+    selectedPiece,
+    config.showPieceList,
+    zoomByFactor,
+    fitBBox,
+  ]);
+
   const persistMistakePiece = useCallback(
     (piece: MapPieceItem | null) => {
       if (!piece || spec.playKind === 'view') return;
-      setSessionWrongIds((prev) => {
-        if (prev.has(piece.id)) return prev;
-        const next = new Set(prev);
-        next.add(piece.id);
-        return next;
-      });
+      if (!sessionWrongIdsRef.current.has(piece.id)) {
+        const nextWrong = new Set(sessionWrongIdsRef.current);
+        nextWrong.add(piece.id);
+        sessionWrongIdsRef.current = nextWrong;
+        setSessionWrongIds(nextWrong);
+      }
+
+      // In cross-mode review, bump missCount on original source mistake entries instead of adding a phantom review_munis_* group
+      const sourceKeys = spec.isReviewMode ? spec.reviewSourceKeys?.[piece.id] : undefined;
+      if (sourceKeys && sourceKeys.length > 0) {
+        const existingList = loadMistakes();
+        const keySet = new Set(sourceKeys);
+        const matched = existingList.filter((entry) => keySet.has(entry.key));
+        if (matched.length > 0) {
+          for (const orig of matched) {
+            onRecordMistake({
+              pieceId: orig.pieceId,
+              pieceName: orig.pieceName,
+              pieceRuby: orig.pieceRuby,
+              prefCode: orig.prefCode,
+              prefName: orig.prefName,
+              areaId: orig.areaId,
+              areaName: orig.areaName,
+              modeId: orig.modeId,
+              modeLabel: orig.modeLabel,
+              playKind: orig.playKind,
+              mapScope: orig.mapScope,
+              geoCategory: orig.geoCategory,
+              prefFilterCodes: orig.prefFilterCodes,
+              regionFilter: orig.regionFilter,
+            });
+          }
+          return;
+        }
+      }
+
       onRecordMistake({
         pieceId: piece.id,
         pieceName: piece.answerKanji ?? piece.name,
@@ -423,11 +596,47 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     [spec, onRecordMistake],
   );
 
+  const showMissToast = useCallback((text: string) => {
+    setPuzzleMissToast({ nonce: Date.now(), text });
+    if (missToastTimerRef.current != null) window.clearTimeout(missToastTimerRef.current);
+    missToastTimerRef.current = window.setTimeout(() => {
+      setPuzzleMissToast(null);
+      missToastTimerRef.current = null;
+    }, 950);
+  }, []);
+
+  const handleMiss = useCallback(
+    (piece: MapPieceItem | null) => {
+      playWrongBuzz(config.seVolume, config.fixActionSound);
+      missesRef.current += 1;
+      setMisses(missesRef.current);
+      persistMistakePiece(piece);
+      if (spec.playKind === 'puzzle') {
+        showMissToast('× そこではありません');
+      }
+    },
+    [config.seVolume, config.fixActionSound, persistMistakePiece, spec.playKind, showMissToast],
+  );
+
+  // Records a give-up / auto-solve as BOTH a mistake AND a miss so it never grants No-Miss Crown or 3 stars
+  const recordGiveUp = useCallback(
+    (piece: MapPieceItem | null) => {
+      if (!piece) return;
+      missesRef.current += 1;
+      setMisses(missesRef.current);
+      persistMistakePiece(piece);
+    },
+    [persistMistakePiece],
+  );
+
   const handlePieceSuccess = useCallback(
     (pieceId: string, options?: { keepHintFitted?: boolean }) => {
-      if (completedIds.has(pieceId)) return;
-      const nextCompleted = new Set(completedIds);
+      if (completedIdsRef.current.has(pieceId)) return;
+      clearAdvanceTimer();
+
+      const nextCompleted = new Set(completedIdsRef.current);
       nextCompleted.add(pieceId);
+      completedIdsRef.current = nextCompleted;
       setCompletedIds(nextCompleted);
       setSelectedPiece(null);
       setHintState(null);
@@ -435,8 +644,8 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         setHintFittedPieceId((cur) => (cur === pieceId ? null : cur));
       }
 
-      // If answered cleanly (no mistake on this piece during this session), remove from saved mistake bank!
-      if (!sessionWrongIds.has(pieceId)) {
+      // Only clear from mistake bank if answered cleanly without miss/give-up in this session
+      if (!sessionWrongIdsRef.current.has(pieceId)) {
         const sourceKeys = spec.reviewSourceKeys?.[pieceId];
         if (sourceKeys && sourceKeys.length > 0) {
           onClearMistakeKeys(sourceKeys);
@@ -446,31 +655,50 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
       }
 
       const pieceObj = orderedTargets.find((p) => p.id === pieceId) ?? null;
-      if (pieceObj) setInspectedPiece(pieceObj);
-
       if (spec.playKind === 'puzzle') {
-        playSnapBell(config.seVolume, config.fixActionSound);
+        if (pieceObj) setInspectedPiece(pieceObj);
       } else {
-        playCorrectChime(config.seVolume, config.fixActionSound);
+        // In Quiz & Yomikata: auto-dismiss full info card on advance, show non-blocking pill instead
+        setInspectedPiece(null);
+        if (pieceObj) setLastAnsweredPiece(pieceObj);
       }
+
       triggerVibrate(config.fixActionVibration, 35);
 
       if (nextCompleted.size >= orderedTargets.length) {
+        const exactFinalMs = getCurrentElapsedMs();
+        baseElapsedMsRef.current = exactFinalMs;
+        runningSinceMsRef.current = null;
+        setBaseElapsedMs(exactFinalMs);
+        setRunningSinceMs(null);
+        setFinalElapsedMs(exactFinalMs);
         setIsCompleted(true);
+        // Play ONLY completion fanfare on the final piece (no overlapping chime)
         playCompleteFanfare(config.seVolume, config.fixActionSound);
+        const recordedMisses = Math.max(
+          missesRef.current,
+          sessionWrongIdsRef.current.size,
+        );
         const { isNewBest: newRec } = onRecordClear(
           spec.modeId,
-          elapsedMsRef.current,
-          misses,
+          exactFinalMs,
+          recordedMisses,
           spec.questionCount,
           spec.maxCount,
           spec.isCustomOrRandom,
+          hintsUsedRef.current,
         );
         setIsNewBest(newRec);
         if (!spec.isCustomOrRandom) {
           onSaveAuto(null);
         }
         return;
+      }
+
+      if (spec.playKind === 'puzzle') {
+        playSnapBell(config.seVolume, config.fixActionSound);
+      } else {
+        playCorrectChime(config.seVolume, config.fixActionSound);
       }
 
       const nextUnfinished = orderedTargets.findIndex(
@@ -487,26 +715,24 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         onSaveAuto(
           buildProgressSnapshot(
             nextCompleted,
-            sessionWrongIds,
+            sessionWrongIdsRef.current,
             resolvedNextIdx,
-            misses,
-            hintsUsed,
+            missesRef.current,
+            hintsUsedRef.current,
           ),
         );
       }
     },
     [
-      completedIds,
-      sessionWrongIds,
+      clearAdvanceTimer,
       orderedTargets,
       spec,
       config.seVolume,
       config.fixActionSound,
       config.fixActionVibration,
       config.autoSaveTiming,
-      misses,
-      hintsUsed,
       currentIndex,
+      getCurrentElapsedMs,
       onClearMistake,
       onClearMistakeKeys,
       onRecordClear,
@@ -520,15 +746,6 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     handlePieceSuccessRef.current = handlePieceSuccess;
   }, [handlePieceSuccess]);
 
-  const handleMiss = useCallback(
-    (piece: MapPieceItem | null) => {
-      playWrongBuzz(config.seVolume);
-      setMisses((m) => m + 1);
-      persistMistakePiece(piece);
-    },
-    [config.seVolume, persistMistakePiece],
-  );
-
   const remainingPieces = useMemo(
     () => orderedTargets.filter((p) => !completedIds.has(p.id)),
     [orderedTargets, completedIds],
@@ -538,6 +755,16 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     () => orderedTargets.filter((p) => sessionWrongIds.has(p.id)),
     [orderedTargets, sessionWrongIds],
   );
+
+  const wrongCompletedCount = useMemo(() => {
+    let count = 0;
+    for (const id of sessionWrongIds) {
+      if (completedIds.has(id)) count += 1;
+    }
+    return count;
+  }, [sessionWrongIds, completedIds]);
+
+  const cleanCompletedCount = Math.max(0, completedIds.size - wrongCompletedCount);
 
   const currentHintTargetId =
     spec.playKind === 'puzzle'
@@ -552,6 +779,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
   const hintArea: HintAreaOverlay | null = activeHintMatch?.areaVisible
     ? activeHintMatch.area
     : null;
+  const hint1Active = hintStage === 1 && Boolean(activeHintMatch?.areaVisible);
 
   const focusHintAreaSmooth = useCallback(
     (area: HintAreaOverlay) => {
@@ -566,7 +794,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     [animateToBBox],
   );
 
-  const handleHint1 = () => {
+  const handleHint1 = useCallback(() => {
     if (config.disableHelpButton || isCompleted || !loadedMap) return;
     const hintTarget =
       spec.playKind === 'puzzle'
@@ -590,11 +818,12 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     const area = computeHint1Area(hintTarget, loadedMap, spec);
     if (!hint1ChargedPieceIdsRef.current.has(hintTarget.id)) {
       hint1ChargedPieceIdsRef.current.add(hintTarget.id);
-      setHintsUsed((h) => h + 1);
+      hintsUsedRef.current += 1;
+      setHintsUsed(hintsUsedRef.current);
     }
     if (spec.playKind === 'puzzle' && !selectedPiece) {
+      // Never call setInspectedPiece(hintTarget) here to avoid spoiling unplaced piece details
       setSelectedPiece(hintTarget);
-      setInspectedPiece(hintTarget);
     }
     setHintState({
       pieceId: hintTarget.id,
@@ -603,21 +832,32 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
       areaVisible: true,
     });
     focusHintAreaSmooth(area);
-  };
+  }, [
+    config.disableHelpButton,
+    isCompleted,
+    loadedMap,
+    spec,
+    selectedPiece,
+    remainingPieces,
+    activePiece,
+    hintState,
+    focusHintAreaSmooth,
+  ]);
 
-  const handleHint2 = () => {
+  const handleHint2 = useCallback(() => {
     if (config.disableHelpButton || isCompleted || !loadedMap) return;
     const hintTarget =
       spec.playKind === 'puzzle'
         ? selectedPiece ?? remainingPieces[0]
         : activePiece;
-    if (!hintTarget || completedIds.has(hintTarget.id)) return;
+    if (!hintTarget || completedIdsRef.current.has(hintTarget.id)) return;
     if (hintStage >= 2 && hintState?.pieceId === hintTarget.id) {
       focusPieceSmooth(hintTarget);
       return;
     }
 
-    setHintsUsed((h) => h + 1);
+    hintsUsedRef.current += 1;
+    setHintsUsed(hintsUsedRef.current);
     setHintState({
       pieceId: hintTarget.id,
       stage: 2,
@@ -628,40 +868,174 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
     focusPieceSmooth(hintTarget);
 
     if (spec.playKind === 'puzzle') {
+      // Auto-placing via Hint 2 is a give-up: record mistake & increment misses BEFORE solving
+      recordGiveUp(hintTarget);
       if (hintFittedTimerRef.current != null) {
         window.clearTimeout(hintFittedTimerRef.current);
       }
-      handlePieceSuccess(hintTarget.id, { keepHintFitted: true });
+      handlePieceSuccessRef.current(hintTarget.id, { keepHintFitted: true });
       hintFittedTimerRef.current = window.setTimeout(() => {
         setHintFittedPieceId((cur) => (cur === hintTarget.id ? null : cur));
         hintFittedTimerRef.current = null;
       }, 1800);
     }
-  };
+  }, [
+    config.disableHelpButton,
+    isCompleted,
+    loadedMap,
+    spec.playKind,
+    selectedPiece,
+    remainingPieces,
+    activePiece,
+    hintStage,
+    hintState,
+    focusPieceSmooth,
+    recordGiveUp,
+  ]);
 
-  const flushProgressBeforeExit = () => {
+  const flushProgressBeforeExit = useCallback(() => {
+    clearAdvanceTimer();
     if (!spec.isCustomOrRandom && !isCompleted && orderedTargets.length > 0) {
       onSaveAuto(
         buildProgressSnapshot(
-          completedIds,
-          sessionWrongIds,
+          completedIdsRef.current,
+          sessionWrongIdsRef.current,
           currentIndex,
-          misses,
-          hintsUsed,
+          missesRef.current,
+          hintsUsedRef.current,
         ),
       );
     }
-  };
+  }, [
+    clearAdvanceTimer,
+    spec.isCustomOrRandom,
+    isCompleted,
+    orderedTargets.length,
+    onSaveAuto,
+    buildProgressSnapshot,
+    currentIndex,
+  ]);
 
-  const handleBackToAreas = () => {
+  const handleBackToAreas = useCallback(() => {
     flushProgressBeforeExit();
     onExitToAreas();
-  };
+  }, [flushProgressBeforeExit, onExitToAreas]);
 
-  const handleBackToTitle = () => {
+  const handleBackToTitle = useCallback(() => {
     flushProgressBeforeExit();
     onExitToTitle();
-  };
+  }, [flushProgressBeforeExit, onExitToTitle]);
+
+  const handleToggleMute = useCallback(() => {
+    const currentlyMuted = config.seVolume <= 0 || !config.fixActionSound;
+    if (currentlyMuted) {
+      onConfigChange({
+        ...config,
+        seVolume: lastNonZeroVolumeRef.current || 70,
+        fixActionSound: true,
+      });
+    } else {
+      lastNonZeroVolumeRef.current = config.seVolume;
+      onConfigChange({
+        ...config,
+        seVolume: 0,
+        fixActionSound: false,
+      });
+    }
+  }, [config, onConfigChange]);
+
+  const handleToggleNameOnFix = useCallback(() => {
+    onConfigChange({ ...config, nameOnFix: !config.nameOnFix });
+  }, [config, onConfigChange]);
+
+  const handleToggleQuizChoiceLayout = useCallback(() => {
+    onConfigChange({
+      ...config,
+      quizChoiceLayout: config.quizChoiceLayout === 'pointing' ? 'bottom' : 'pointing',
+    });
+  }, [config, onConfigChange]);
+
+  const handleUseSimpleHint = useCallback(() => {
+    hintsUsedRef.current += 1;
+    setHintsUsed(hintsUsedRef.current);
+  }, []);
+
+  const handleSelectPuzzlePiece = useCallback(
+    (p: MapPieceItem | null) => {
+      setSelectedPiece((prev) => {
+        if (p?.id !== prev?.id) {
+          setHintState(null);
+        }
+        return p;
+      });
+      // Do NOT open HudOverlay info card on unplaced piece selection (prevents spoiling!)
+    },
+    [],
+  );
+
+  const handlePuzzlePlaceAttempt = useCallback(
+    (pieceId: string, hitSuccess: boolean) => {
+      if (hitSuccess) {
+        handlePieceSuccessRef.current(pieceId);
+      } else {
+        const p = orderedTargets.find((x) => x.id === pieceId) ?? null;
+        handleMiss(p);
+      }
+    },
+    [orderedTargets, handleMiss],
+  );
+
+  const handleQuizAnswerResult = useCallback(
+    (correct: boolean) => {
+      if (!activePiece) return;
+      if (correct) {
+        const targetId = activePiece.id;
+        clearAdvanceTimer();
+        advanceTimerRef.current = window.setTimeout(() => {
+          advanceTimerRef.current = null;
+          handlePieceSuccessRef.current(targetId);
+        }, 420);
+      } else {
+        handleMiss(activePiece);
+      }
+    },
+    [activePiece, clearAdvanceTimer, handleMiss],
+  );
+
+  const handleQuizHintEliminatedAll = useCallback(() => {
+    if (activePiece) {
+      recordGiveUp(activePiece);
+    }
+  }, [activePiece, recordGiveUp]);
+
+  const handleActiveGiveUp = useCallback(() => {
+    if (activePiece) {
+      recordGiveUp(activePiece);
+    }
+  }, [activePiece, recordGiveUp]);
+
+  const handleAdvanceAfterGiveUp = useCallback(() => {
+    if (activePiece) {
+      handlePieceSuccessRef.current(activePiece.id);
+    }
+  }, [activePiece]);
+
+  const handleYomikataAnswerResult = useCallback(
+    (correct: boolean) => {
+      if (!activePiece) return;
+      if (correct) {
+        const targetId = activePiece.id;
+        clearAdvanceTimer();
+        advanceTimerRef.current = window.setTimeout(() => {
+          advanceTimerRef.current = null;
+          handlePieceSuccessRef.current(targetId);
+        }, 420);
+      } else {
+        handleMiss(activePiece);
+      }
+    },
+    [activePiece, clearAdvanceTimer, handleMiss],
+  );
 
   const handleMapPieceClick = useCallback(
     (clicked: MapPieceItem) => {
@@ -672,31 +1046,35 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
       if (spec.playKind === 'puzzle') {
         if (selectedPiece) {
           if (clicked.id === selectedPiece.id) {
-            handlePieceSuccess(clicked.id);
-          } else if (!completedIds.has(clicked.id)) {
+            handlePieceSuccessRef.current(clicked.id);
+          } else if (completedIdsRef.current.has(clicked.id)) {
+            setInspectedPiece(clicked);
+          } else if (targetIdSet.has(clicked.id)) {
+            // Only penalize tapping an uncompleted target piece (never muted non-target context land)
             handleMiss(selectedPiece);
           }
           return;
         }
-        if (completedIds.has(clicked.id)) {
+        if (completedIdsRef.current.has(clicked.id)) {
           setInspectedPiece(clicked);
         }
         return;
       }
-      if (completedIds.has(clicked.id)) {
+      if (completedIdsRef.current.has(clicked.id)) {
         setInspectedPiece(clicked);
       }
     },
-    [isCompleted, spec.playKind, selectedPiece, completedIds, handlePieceSuccess, handleMiss],
+    [isCompleted, spec.playKind, selectedPiece, targetIdSet, handleMiss],
   );
 
-  const handleStartMistakeReviewFromResult = () => {
+  const handleStartMistakeReviewFromResult = useCallback(() => {
     if (wrongPieces.length === 0) return;
+    clearAdvanceTimer();
     const ids = wrongPieces.map((p) => p.id);
     const cleanModeLabel = spec.modeLabel.replace(/（復習）$/, '');
     onRestartSession({
       ...spec,
-      sessionId: `review_${spec.modeId}_${Date.now()}`,
+      sessionId: createSessionId(`review_${spec.modeId}`),
       modeLabel: `${cleanModeLabel}（復習）`,
       questionCount: ids.length,
       maxCount: ids.length,
@@ -704,7 +1082,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
       isReviewMode: true,
       fixedPieceIds: ids,
     });
-  };
+  }, [wrongPieces, clearAdvanceTimer, spec, onRestartSession]);
 
   const showJumpButtons: 'japan' | 'none' =
     spec.areaId === '00_japan' ||
@@ -716,71 +1094,104 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
 
   const isTerrainMode = spec.mapScope === 'geography_100';
   const isPrefGuessMode = spec.mapScope === 'japan_prefs' && !spec.geoCategory;
+  const isMultiPrefMuniMode =
+    spec.mapScope === 'japan_munis' &&
+    (!spec.prefFilterCodes || spec.prefFilterCodes.length !== 1);
+  const requireBackConfirm =
+    spec.isCustomOrRandom && !isCompleted && completedIds.size > 0;
 
   return (
-    <div className={`map-screen-root ${spec.playKind === 'puzzle' ? 'has-tray' : 'has-bottom-panel'}`}>
+    <div
+      className={`map-screen-root ${spec.playKind === 'puzzle' ? 'has-tray' : 'has-bottom-panel'}`}
+    >
       <HudOverlay
         title={spec.areaName}
         modeLabel={spec.modeLabel}
-        elapsedMs={elapsedMs}
+        baseElapsedMs={baseElapsedMs}
+        runningSinceMs={runningSinceMs}
+        timerRunning={!paused}
         misses={misses}
         hintsUsed={hintsUsed}
         completedCount={completedIds.size}
+        cleanCompletedCount={cleanCompletedCount}
+        wrongCompletedCount={wrongCompletedCount}
         totalCount={orderedTargets.length}
         config={config}
         zoomRatio={zoomRatio}
         minZoomRatio={minZoomRatio}
         showJumpButtons={showJumpButtons}
         isCustomOrRandom={spec.isCustomOrRandom}
+        requireBackConfirm={requireBackConfirm}
         inspectedPiece={inspectedPiece}
+        lastAnsweredPiece={spec.playKind !== 'puzzle' && !isCompleted ? lastAnsweredPiece : null}
         tags={tags}
         readyStage={readyStage}
+        stageRef={handleStageRef}
         onZoomChange={(z) => setZoomAtPoint(z)}
+        onZoomByFactor={(factor) => zoomByFactor(factor)}
         onJumpToBBox={(bbox) => animateToBBox(bbox)}
         onResetZoom={() => loadedMap && fitBBox(loadedMap.viewBBox)}
+        onToggleMute={handleToggleMute}
         onOpenConfig={() => setShowConfig(true)}
         onOpenSave={() => setShowSaveModal(true)}
         onBack={handleBackToAreas}
         onCloseInfo={() => setInspectedPiece(null)}
+        onOpenLastAnswerInfo={() => {
+          if (lastAnsweredPiece) setInspectedPiece(lastAnsweredPiece);
+        }}
+        onDismissLastAnswer={() => setLastAnsweredPiece(null)}
+        onSkipReady={handleSkipReady}
         onTogglePieceTag={onTogglePieceTag}
         onOpenTagManager={() => setShowTagModal(true)}
-      />
+      >
+        {!loadedMap ? (
+          <div className="map-loading-state">精巧な白地図を生成中...</div>
+        ) : (
+          <MapCanvas
+            svgRef={handleSvgRef}
+            viewBox={viewBox}
+            viewBoxString={viewBoxString}
+            targetPieces={loadedMap.targetPieces}
+            poolPieces={loadedMap.allPoolPieces}
+            contextPieces={loadedMap.contextPieces}
+            bgPrefPieces={loadedMap.bgPrefPieces}
+            insets={loadedMap.insets}
+            completedIds={completedIds}
+            missedIds={inspectingCompleted ? sessionWrongIds : undefined}
+            activePieceId={
+              !isCompleted && spec.playKind !== 'puzzle' && activePiece ? activePiece.id : null
+            }
+            hintPieceId={null}
+            hintArea={hintArea}
+            hintFittedPieceId={hintFittedPieceId}
+            selectedPieceId={isCompleted ? inspectedPiece?.id ?? null : null}
+            config={config}
+            tags={tags}
+            showCapitalMarks={
+              spec.geoCategory === 'capital_q' || spec.geoCategory === 'capital_y'
+            }
+            enablePrefHoverTooltip={!isPrefGuessMode}
+            enablePrefTint={!isPrefGuessMode}
+            hoverTargetId={hoverTargetId}
+            isTerrainMode={isTerrainMode}
+            onPieceClick={handleMapPieceClick}
+            onPanBy={panByScreenDelta}
+            onFinishPan={finishPan}
+            onZoomByFactor={zoomByFactor}
+          />
+        )}
 
-      {!loadedMap ? (
-        <div className="map-loading-state">精巧な白地図を生成中...</div>
-      ) : (
-        <MapCanvas
-          svgRef={handleSvgRef}
-          viewBox={viewBox}
-          viewBoxString={viewBoxString}
-          targetPieces={loadedMap.targetPieces}
-          poolPieces={loadedMap.allPoolPieces}
-          contextPieces={loadedMap.contextPieces}
-          bgPrefPieces={loadedMap.bgPrefPieces}
-          insets={loadedMap.insets}
-          completedIds={completedIds}
-          activePieceId={
-            !isCompleted && spec.playKind !== 'puzzle' && activePiece ? activePiece.id : null
-          }
-          hintPieceId={null}
-          hintArea={hintArea}
-          hintFittedPieceId={hintFittedPieceId}
-          selectedPieceId={isCompleted ? inspectedPiece?.id ?? null : null}
-          config={config}
-          tags={tags}
-          showCapitalMarks={
-            spec.geoCategory === 'capital_q' || spec.geoCategory === 'capital_y'
-          }
-          enablePrefHoverTooltip={!isPrefGuessMode}
-          enablePrefTint={!isPrefGuessMode}
-          hoverTargetId={hoverTargetId}
-          isTerrainMode={isTerrainMode}
-          onPieceClick={handleMapPieceClick}
-          onPanBy={panByScreenDelta}
-          onFinishPan={finishPan}
-          onZoomByFactor={zoomByFactor}
-        />
-      )}
+        {puzzleMissToast && (
+          <div
+            key={puzzleMissToast.nonce}
+            className="puzzle-miss-toast"
+            role="status"
+            aria-live="polite"
+          >
+            {puzzleMissToast.text}
+          </div>
+        )}
+      </HudOverlay>
 
       {/* Play mode interaction panel */}
       {loadedMap && !isCompleted && readyStage === 'playing' && (
@@ -791,27 +1202,13 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
               remainingPieces={remainingPieces}
               config={config}
               selectedPieceId={selectedPiece?.id ?? null}
-              onSelectPiece={(p) => {
-                if (p?.id !== selectedPiece?.id) {
-                  setHintState(null);
-                }
-                setSelectedPiece(p);
-                if (p) setInspectedPiece(p);
-              }}
-              onPlaceAttempt={(pieceId, hitSuccess) => {
-                if (hitSuccess) {
-                  handlePieceSuccess(pieceId);
-                } else {
-                  const p = orderedTargets.find((x) => x.id === pieceId) ?? null;
-                  handleMiss(p);
-                }
-              }}
+              hint1Active={hint1Active}
+              onSelectPiece={handleSelectPuzzlePiece}
+              onPlaceAttempt={handlePuzzlePlaceAttempt}
               onHoverTargetChange={setHoverTargetId}
               onHint1={handleHint1}
               onHint2={handleHint2}
-              onToggleNameOnFix={() =>
-                onConfigChange({ ...config, nameOnFix: !config.nameOnFix })
-              }
+              onToggleNameOnFix={handleToggleNameOnFix}
               clientToSvg={clientToSvg}
               svgScalePxPerUnit={svgScalePxPerUnit}
             />
@@ -827,50 +1224,36 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
               quizChoiceLayout={config.quizChoiceLayout}
               nameOnFix={config.nameOnFix}
               hasJumpBar={showJumpButtons !== 'none'}
+              modalOpen={anyModalOpen}
+              mapStageEl={mapStageEl}
               svgToContainerPoint={svgToContainerPoint}
               getSvgRect={getSvgRect}
               subscribeLiveViewBox={subscribeLiveViewBox}
               onFocusPiece={focusPieceSmooth}
-              onUseHint={() => setHintsUsed((h) => h + 1)}
-              onToggleQuizChoiceLayout={() =>
-                onConfigChange({
-                  ...config,
-                  quizChoiceLayout:
-                    config.quizChoiceLayout === 'pointing' ? 'bottom' : 'pointing',
-                })
-              }
-              onToggleNameOnFix={() =>
-                onConfigChange({ ...config, nameOnFix: !config.nameOnFix })
-              }
-              onAnswerResult={(correct) => {
-                if (correct) {
-                  window.setTimeout(() => handlePieceSuccessRef.current(activePiece.id), 180);
-                } else {
-                  handleMiss(activePiece);
-                }
-              }}
+              onUseHint={handleUseSimpleHint}
+              onHintEliminatedAll={handleQuizHintEliminatedAll}
+              onGiveUp={handleActiveGiveUp}
+              onAdvanceAfterGiveUp={handleAdvanceAfterGiveUp}
+              onToggleQuizChoiceLayout={handleToggleQuizChoiceLayout}
+              onToggleNameOnFix={handleToggleNameOnFix}
+              onAnswerResult={handleQuizAnswerResult}
             />
           )}
 
           {spec.playKind === 'yomikata' && activePiece && (
             <YomikataGame
-              key={activePiece.id}
               activePiece={activePiece}
               isCapitalYomikata={spec.geoCategory === 'capital_y'}
+              isPrefectureMode={spec.mapScope === 'japan_prefs' && !spec.geoCategory}
+              showPrefContext={isMultiPrefMuniMode}
               config={config}
+              modalOpen={anyModalOpen}
               onFocusPiece={focusPieceSmooth}
-              onUseHint={() => setHintsUsed((h) => h + 1)}
-              onToggleNameOnFix={() =>
-                onConfigChange({ ...config, nameOnFix: !config.nameOnFix })
-              }
-              onAnswerResult={(correct) => {
-                if (correct) {
-                  window.setTimeout(() => handlePieceSuccessRef.current(activePiece.id), 120);
-                } else {
-                  handleMiss(activePiece);
-                }
-              }}
-              onMarkMistake={() => persistMistakePiece(activePiece)}
+              onUseHint={handleUseSimpleHint}
+              onToggleNameOnFix={handleToggleNameOnFix}
+              onAnswerResult={handleYomikataAnswerResult}
+              onGiveUp={handleActiveGiveUp}
+              onAdvanceAfterGiveUp={handleAdvanceAfterGiveUp}
             />
           )}
         </>
@@ -881,10 +1264,11 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
           config={config}
           onChange={onConfigChange}
           onRetry={() => {
+            clearAdvanceTimer();
             setShowConfig(false);
             onRestartSession({
               ...spec,
-              sessionId: `${spec.modeId}_${Date.now()}`,
+              sessionId: createSessionId(spec.modeId),
             });
           }}
           onGoHome={() => {
@@ -903,11 +1287,11 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
             const slotId = `slot_${Date.now()}`;
             onUpsertManualSave(
               buildProgressSnapshot(
-                completedIds,
-                sessionWrongIds,
+                completedIdsRef.current,
+                sessionWrongIdsRef.current,
                 currentIndex,
-                misses,
-                hintsUsed,
+                missesRef.current,
+                hintsUsedRef.current,
                 slotId,
               ),
             );
@@ -915,16 +1299,17 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
           onOverwriteSave={(slotId) => {
             onUpsertManualSave(
               buildProgressSnapshot(
-                completedIds,
-                sessionWrongIds,
+                completedIdsRef.current,
+                sessionWrongIdsRef.current,
                 currentIndex,
-                misses,
-                hintsUsed,
+                missesRef.current,
+                hintsUsedRef.current,
                 slotId,
               ),
             );
           }}
           onLoadSave={(s) => {
+            clearAdvanceTimer();
             setShowSaveModal(false);
             onLoadManualSave(s);
           }}
@@ -941,6 +1326,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
           onRenameTag={onRenameTag}
           onToggleLock={onToggleLockTag}
           onDeleteTag={onDeleteTag}
+          onTogglePieceTag={onTogglePieceTag}
           onSelectPiece={(p) => {
             setInspectedPiece(p);
             focusPieceSmooth(p);
@@ -953,7 +1339,7 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
         <ResultOverlay
           areaName={spec.areaName}
           modeLabel={spec.modeLabel}
-          elapsedMs={elapsedMs}
+          elapsedMs={finalElapsedMs}
           misses={misses}
           hintsUsed={hintsUsed}
           questionCount={orderedTargets.length}
@@ -964,27 +1350,35 @@ export const GameSessionShell: React.FC<GameSessionShellProps> = ({
           wrongPieces={wrongPieces}
           inspectingCompleted={inspectingCompleted}
           onToggleInspectCompleted={() => setInspectingCompleted((v) => !v)}
+          onInspectMissedPiece={(piece) => {
+            setInspectingCompleted(true);
+            setInspectedPiece(piece);
+            focusPieceSmooth(piece);
+          }}
           onReviewMistakes={
             wrongPieces.length > 0 ? handleStartMistakeReviewFromResult : undefined
           }
           onRetrySame={() => {
+            clearAdvanceTimer();
             onRestartSession({
               ...spec,
-              sessionId: `${spec.modeId}_${Date.now()}`,
+              sessionId: createSessionId(spec.modeId),
               fixedPieceIds: orderedTargets.map((p) => p.id),
             });
           }}
           onRetryRandom={
             spec.isCustomOrRandom && !spec.isReviewMode
               ? () => {
+                  clearAdvanceTimer();
                   onRestartSession({
                     ...spec,
-                    sessionId: `${spec.modeId}_rand_${Date.now()}`,
+                    sessionId: createSessionId(`${spec.modeId}_rand`),
                     fixedPieceIds: undefined,
                   });
                 }
               : undefined
           }
+          onGoAreas={onExitToAreas}
           onGoTitle={onExitToTitle}
         />
       )}

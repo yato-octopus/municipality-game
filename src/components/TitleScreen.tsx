@@ -1,5 +1,11 @@
-import React, { useMemo, useState } from 'react';
-import { JAPAN_REGION_JUMPS } from '../data/gameCatalog';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  JAPAN_REGION_JUMPS,
+  PREF_REGION_GROUPS,
+  TIHOU_MUNI_GROUPS,
+} from '../data/gameCatalog';
+import { useEscapeClose } from '../hooks/useEscapeClose';
+import { normalizeSearchText } from '../services/dataAnalyzer';
 import {
   getModePoolIds,
   loadSessionMap,
@@ -21,9 +27,15 @@ import type {
 } from '../types/game';
 import { formatTimeMs } from '../utils/formatters';
 import { APP_VERSION_LABEL } from '../version';
+import { ConfigModal } from './ConfigModal';
 import { DataTableModal } from './DataTableModal';
 import { MistakeReviewModal } from './MistakeReviewModal';
 import { SaveSlotsModal } from './SaveSlotsModal';
+
+interface StartViewOptions {
+  focusPieceId?: string | null;
+  returnTo?: 'title' | 'areas';
+}
 
 interface TitleScreenProps {
   initialScreenMode?: 'title' | 'areas';
@@ -40,15 +52,46 @@ interface TitleScreenProps {
   manualSaves: SavedProgress[];
   mistakes: MistakeEntry[];
   onConfigChange: (next: ConfigState) => void;
-  onStartGame: (spec: GameSessionSpec, restore?: SavedProgress | null) => void;
-  onStartView: (areaId: string) => void;
+  onStartGame: (
+    spec: GameSessionSpec,
+    restore?: SavedProgress | null,
+    callerScreen?: 'title' | 'areas',
+  ) => void;
+  onStartView: (areaId: string, options?: StartViewOptions) => void;
+  onClearAutoSave?: () => void;
   onDeleteManualSave: (slotId: string) => void;
   onDeleteMistakeEntry: (key: string) => void;
   onClearModeMistakes: (modeId: string) => void;
   onClearAllMistakes: () => void;
 }
 
+interface AreaGridCard {
+  key: string;
+  area: AreaDefinition;
+  name: string;
+  ruby: string;
+  subTitle: string;
+  modes: AreaSubMode[];
+  viewAreaId?: string;
+}
+
 const CHANGELOG_ITEMS: { ver: string; notes: string[] }[] = [
+  {
+    ver: 'Ver 2.2.0',
+    notes: [
+      'マップ描画・操作性を大幅刷新：画面ピクセル基準の地名ラベル衝突回避＆高倍率スケール改善、パン境界クランプ、カーソル中心ズーム補正、自然地理100選の視認性向上、市専用マップのコントラスト強化を実施',
+      'モバイル＆レスポンシブUXを刷新：.map-stage レイアウト導入により上部バー折り返し時のジャンプバー・ズーム操作・情報カード重なりを解消、パズルトレイのコンパクト化および狭い画面向けポインティング選択肢（上下3+3配置）を追加',
+      '白地図閲覧モードに「日本の自然地理100選」アトラス、地名クイック検索（/）、ズームスライダー＆倍率表示、「このエリアで挑戦」・タグ練習ショートカット、DataTable からの直接フォーカス移動を追加',
+      'ホーム・エリア選択・モーダルを改善：ホームに学習進捗サマリー追加、47都道府県の検索・状態フィルタ・8地方見出し整理、日本／市区町村／市タブの直接カード化、DataTable 増分表示・昇降順切替・カタカナ検索・大量チップの絞り込み＆スクロール化、全モーダル Esc キー対応および削除・上書き・リトライの2段階確認を実装',
+      'プレイ体験・採点の厳密化：ヒント2／答えを見る使用時の誤答・星評価・ノーミス王冠の整合性修正、パズルのネタバレ防止・トレイ検索＆ソート・軽量ドラッグ最適化、クイズ1〜6キー操作、読み方の Safari IME 誤爆防止＆都府県サフィックス柔軟判定、カスタム復習の取りこぼし修正を実施',
+    ],
+  },
+  {
+    ver: 'Ver 2.1.1',
+    notes: [
+      '地図JSONデータ（japan_prefs.json / muni/* / geography_100.json）の読み込みにバージョン付きキャッシュバスティングを付与し、更新直後に旧キャッシュの都道府県境界と新市区町村境界が混在して県境がズレる問題を解消',
+    ],
+  },
   {
     ver: 'Ver 2.1.0',
     notes: [
@@ -103,6 +146,8 @@ const CHANGELOG_ITEMS: { ver: string; notes: string[] }[] = [
   },
 ];
 
+const COUNT_PRESETS = [10, 20, 50] as const;
+
 export const TitleScreen: React.FC<TitleScreenProps> = ({
   initialScreenMode = 'title',
   initialCategoryTab = 'japan',
@@ -120,6 +165,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onConfigChange,
   onStartGame,
   onStartView,
+  onClearAutoSave,
   onDeleteManualSave,
   onDeleteMistakeEntry,
   onClearModeMistakes,
@@ -131,16 +177,28 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     setCategoryTab(tab);
     onCategoryTabChange?.(tab);
   };
+
+  // Area select search & filter (47 prefectures tab)
+  const [areaSearch, setAreaSearch] = useState('');
+  const [areaStatusFilter, setAreaStatusFilter] = useState<'all' | 'uncleared' | 'mistakes'>('all');
+
+  // GameInfo Modal state
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
+  const [selectedModeFilterIds, setSelectedModeFilterIds] = useState<string[] | null>(null);
+  const [selectedModalTitle, setSelectedModalTitle] = useState<string | null>(null);
   const [selectedSubMode, setSelectedSubMode] = useState<AreaSubMode | null>(null);
   const [questionCount, setQuestionCount] = useState<number>(47);
   const [maxCountForSub, setMaxCountForSub] = useState<number>(47);
+  const poolReqIdRef = useRef(0);
 
+  // Modals
   const [showManualModal, setShowManualModal] = useState(false);
   const [showMistakeModal, setShowMistakeModal] = useState(false);
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [showRandomModal, setShowRandomModal] = useState(false);
   const [showOtherModal, setShowOtherModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [confirmDismissAutoSave, setConfirmDismissAutoSave] = useState(false);
   const [otherTab, setOtherTab] = useState<
     'changelog' | 'sound' | 'quality' | 'autosave' | 'fps' | 'source' | 'credit'
   >('changelog');
@@ -148,10 +206,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   // GameInfo quick DataTable preview
   const [dataModalPieces, setDataModalPieces] = useState<{
     title: string;
+    viewAreaId: string;
     pieces: MapPieceItem[];
   } | null>(null);
 
-  // Custom (Training2) state
+  // Custom Mode state
   const [customSelectedPrefs, setCustomSelectedPrefs] = useState<Set<string>>(
     () => new Set(['11', '12', '13', '14']),
   );
@@ -172,33 +231,93 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   );
   const [randomCount, setRandomCount] = useState(15);
 
+  useEffect(() => {
+    if (!confirmDismissAutoSave) return;
+    const t = window.setTimeout(() => setConfirmDismissAutoSave(false), 3000);
+    return () => window.clearTimeout(t);
+  }, [confirmDismissAutoSave]);
+
+  // Escape handlers for inline modals (stack-aware!)
+  useEscapeClose(Boolean(selectedAreaId), () => {
+    setSelectedAreaId(null);
+    setSelectedModeFilterIds(null);
+    setSelectedModalTitle(null);
+  });
+  useEscapeClose(showCustomModal, () => setShowCustomModal(false));
+  useEscapeClose(showRandomModal, () => setShowRandomModal(false));
+  useEscapeClose(showOtherModal, () => setShowOtherModal(false));
+
   const selectedArea = useMemo(
     () => areas.find((a) => a.id === selectedAreaId) ?? null,
     [areas, selectedAreaId],
   );
 
+  const visibleModalModes = useMemo(() => {
+    if (!selectedArea) return [];
+    if (!selectedModeFilterIds || selectedModeFilterIds.length === 0) return selectedArea.modes;
+    const idSet = new Set(selectedModeFilterIds);
+    const filtered = selectedArea.modes.filter((m) => idSet.has(m.id));
+    return filtered.length > 0 ? filtered : selectedArea.modes;
+  }, [selectedArea, selectedModeFilterIds]);
+
+  const prefMetaByCode = useMemo(() => {
+    const m = new Map<string, NonNullable<JapanPrefsData['prefs']>[number]>();
+    if (prefsData) {
+      for (const p of prefsData.prefs) m.set(p.code, p);
+    }
+    return m;
+  }, [prefsData]);
+
+  // Overall mastery summary for Home screen
+  const masteryStats = useMemo(() => {
+    let totalModes = 0;
+    let clearedModes = 0;
+    let noMissCount = 0;
+    let clearedPrefs = 0;
+    for (const a of areas) {
+      let prefHasClear = false;
+      for (const m of a.modes) {
+        totalModes += 1;
+        const rec = records[m.id];
+        if ((rec?.clearCount ?? 0) > 0) {
+          clearedModes += 1;
+          prefHasClear = true;
+        }
+        if (rec?.noMissCleared) noMissCount += 1;
+      }
+      if (a.category === 'prefecture' && prefHasClear) {
+        clearedPrefs += 1;
+      }
+    }
+    return { totalModes, clearedModes, noMissCount, clearedPrefs };
+  }, [areas, records]);
+
+  const mistakesByModeId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const m of mistakes) {
+      map.set(m.modeId, (map.get(m.modeId) ?? 0) + 1);
+    }
+    return map;
+  }, [mistakes]);
+
+  // Custom available count — returns 0 when no prefectures are selected (explicit empty state!)
   const customMaxAvailable = useMemo(() => {
-    if (!prefsData) return 47;
+    if (!prefsData || customSelectedPrefs.size === 0) return 0;
     if (customScope === 'prefectures') {
-      return Math.max(1, customSelectedPrefs.size || 47);
+      return customSelectedPrefs.size;
     }
-    const sel =
-      customSelectedPrefs.size > 0
-        ? customSelectedPrefs
-        : new Set(prefsData.prefs.map((p) => p.code));
     if (customScope === 'cities') {
-      const sum = prefsData.prefs
-        .filter((p) => sel.has(p.code))
+      return prefsData.prefs
+        .filter((p) => customSelectedPrefs.has(p.code))
         .reduce((acc, p) => acc + (cityCountByPref[p.code] ?? 0), 0);
-      return Math.max(1, sum);
     }
-    return Math.max(
-      1,
-      prefsData.prefs
-        .filter((p) => sel.has(p.code))
-        .reduce((acc, p) => acc + p.muniCount, 0),
-    );
+    return prefsData.prefs
+      .filter((p) => customSelectedPrefs.has(p.code))
+      .reduce((acc, p) => acc + p.muniCount, 0);
   }, [prefsData, customScope, customSelectedPrefs, cityCountByPref]);
+
+  const effectiveCustomCount =
+    customMaxAvailable > 0 ? Math.max(1, Math.min(customCount, customMaxAvailable)) : 0;
 
   const randomMaxAvailable = useMemo(() => {
     if (randomPool === 'japan_prefs') return 47;
@@ -207,13 +326,179 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     return totalMunis || 1747;
   }, [randomPool, totalMunis, totalCities]);
 
-  const filteredAreas = useMemo(() => {
-    if (categoryTab === 'japan') return areas.filter((a) => a.category === 'japan');
-    if (categoryTab === 'municipalities')
-      return areas.filter((a) => a.category === 'municipalities');
-    if (categoryTab === 'cities') return areas.filter((a) => a.category === 'cities');
-    return areas.filter((a) => a.category === 'prefecture');
-  }, [areas, categoryTab]);
+  const effectiveRandomCount = Math.max(1, Math.min(randomCount, randomMaxAvailable));
+
+  // Direct cards for Japan / Municipalities / Cities tabs (eliminating 1-card empty pages)
+  const japanCards = useMemo<AreaGridCard[]>(() => {
+    const japanArea = areas.find((a) => a.id === '00_japan');
+    if (!japanArea) return [];
+    const pick = (ids: string[]) => japanArea.modes.filter((m) => ids.includes(m.id));
+    return [
+      {
+        key: 'jp_prefs',
+        area: japanArea,
+        name: '47都道府県',
+        ruby: 'とどうふけん',
+        subTitle: 'パズル・クイズ・読み方（47都道府県）',
+        modes: pick(['00_japan_P', '00_japan_Q', '00_japan_Y']),
+        viewAreaId: '00_japan',
+      },
+      {
+        key: 'jp_capitals',
+        area: japanArea,
+        name: '県庁所在地',
+        ruby: 'けんちょうしょざいち',
+        subTitle: '県庁所在地クイズ・読み方（47都市）',
+        modes: pick(['00_japan_PrefecturalCapital_Q', '00_japan_PrefecturalCapital_Y']),
+        viewAreaId: '00_japan',
+      },
+      {
+        key: 'jp_mountains',
+        area: japanArea,
+        name: '主な山脈・山地・高地',
+        ruby: 'さんみゃく・さんち',
+        subTitle: '日本の自然地理クイズ（24件）',
+        modes: pick(['00_japan_Mountains']),
+        viewAreaId: 'geo_mountains',
+      },
+      {
+        key: 'jp_mountain',
+        area: japanArea,
+        name: '主な山',
+        ruby: 'おもなやま',
+        subTitle: '日本の自然地理クイズ（21座）',
+        modes: pick(['00_japan_Mountain']),
+        viewAreaId: 'geo_mountain',
+      },
+      {
+        key: 'jp_river',
+        area: japanArea,
+        name: '主な河川',
+        ruby: 'おもなかせん',
+        subTitle: '日本の自然地理クイズ（16河川）',
+        modes: pick(['00_japan_River']),
+        viewAreaId: 'geo_river',
+      },
+      {
+        key: 'jp_plain',
+        area: japanArea,
+        name: '主な平野',
+        ruby: 'おもなへいや',
+        subTitle: '日本の自然地理クイズ（17平野）',
+        modes: pick(['00_japan_Plain']),
+        viewAreaId: 'geo_plain',
+      },
+      {
+        key: 'jp_lake',
+        area: japanArea,
+        name: '主な湖',
+        ruby: 'おもなみずうみ',
+        subTitle: '日本の自然地理クイズ（22湖沼）',
+        modes: pick(['00_japan_Lake']),
+        viewAreaId: 'geo_lake',
+      },
+    ];
+  }, [areas]);
+
+  const municipalityCards = useMemo<AreaGridCard[]>(() => {
+    const allMuniArea = areas.find((a) => a.id === '00_japan_all');
+    if (!allMuniArea) return [];
+    const cards: AreaGridCard[] = [
+      {
+        key: 'muni_all',
+        area: allMuniArea,
+        name: '全国（全市区町村）',
+        ruby: 'ぜんこくしくちょうそん',
+        subTitle: `全国 ${totalMunis.toLocaleString()}市区町村 ・ P / Q / 読`,
+        modes: allMuniArea.modes.filter((m) => !m.regionFilter),
+      },
+    ];
+    for (const t of TIHOU_MUNI_GROUPS) {
+      const cnt = t.prefCodes.reduce((s, c) => s + (prefMetaByCode.get(c)?.muniCount ?? 0), 0);
+      cards.push({
+        key: `muni_${t.key}`,
+        area: allMuniArea,
+        name: `${t.label} 市区町村`,
+        ruby: t.label,
+        subTitle: `${cnt.toLocaleString()}市区町村（${t.prefCodes.length}県）・ P / Q / 読`,
+        modes: allMuniArea.modes.filter((m) => m.regionFilter === t.key),
+      });
+    }
+    return cards;
+  }, [areas, totalMunis, prefMetaByCode]);
+
+  const cityCards = useMemo<AreaGridCard[]>(() => {
+    const allCitiesArea = areas.find((a) => a.id === '00_japan_cities');
+    if (!allCitiesArea) return [];
+    const hokkaidoCities = cityCountByPref['01'] ?? 35;
+    const cards: AreaGridCard[] = [
+      {
+        key: 'city_all',
+        area: allCitiesArea,
+        name: '全国（全市）',
+        ruby: 'ぜんこくのし',
+        subTitle: `全国 ${totalCities.toLocaleString()}市 ・ P / Q / 読`,
+        modes: allCitiesArea.modes.filter((m) => m.regionFilter === 'cities_all'),
+      },
+      {
+        key: 'city_hokkaido',
+        area: allCitiesArea,
+        name: '北海道の市',
+        ruby: 'ほっかいどうのし',
+        subTitle: `${hokkaidoCities}市 ・ P / Q / 読`,
+        modes: allCitiesArea.modes.filter((m) => m.regionFilter === 'cities_Hokkaido'),
+      },
+    ];
+    for (const t of TIHOU_MUNI_GROUPS) {
+      const cnt = t.prefCodes.reduce((s, c) => s + (cityCountByPref[c] ?? 0), 0);
+      cards.push({
+        key: `city_${t.key}`,
+        area: allCitiesArea,
+        name: `${t.label}の市`,
+        ruby: `${t.label}のし`,
+        subTitle: `${cnt}市（${t.prefCodes.length}県）・ P / Q / 読`,
+        modes: allCitiesArea.modes.filter((m) => m.regionFilter === `cities_${t.key}`),
+      });
+    }
+    return cards;
+  }, [areas, totalCities, cityCountByPref]);
+
+  const prefAreasByCode = useMemo(() => {
+    const map = new Map<string, AreaDefinition>();
+    for (const a of areas) {
+      if (a.category === 'prefecture' && a.prefCode) {
+        map.set(a.prefCode, a);
+      }
+    }
+    return map;
+  }, [areas]);
+
+  const groupedPrefRegions = useMemo(() => {
+    const q = normalizeSearchText(areaSearch);
+    return PREF_REGION_GROUPS.map((rg) => {
+      const items = rg.prefCodes
+        .map((code) => prefAreasByCode.get(code))
+        .filter((a): a is AreaDefinition => Boolean(a))
+        .filter((a) => {
+          if (q) {
+            const meta = a.prefCode ? prefMetaByCode.get(a.prefCode) : undefined;
+            const hay = normalizeSearchText(
+              `${a.name} ${a.ruby} ${meta?.capital ?? ''} ${meta?.capitalRuby ?? ''}`,
+            );
+            if (!hay.includes(q)) return false;
+          }
+          if (areaStatusFilter === 'uncleared') {
+            const anyCleared = a.modes.some((m) => (records[m.id]?.clearCount ?? 0) > 0);
+            if (anyCleared) return false;
+          } else if (areaStatusFilter === 'mistakes') {
+            const mCnt = a.modes.reduce((s, m) => s + (mistakesByModeId.get(m.id) ?? 0), 0);
+            if (mCnt === 0) return false;
+          }
+          return true;
+        });
+      return { ...rg, items };
+    }).filter((rg) => rg.items.length > 0);
+  }, [areaSearch, areaStatusFilter, prefAreasByCode, prefMetaByCode, records, mistakesByModeId]);
 
   const inferSpecBase = (
     area: AreaDefinition,
@@ -243,11 +528,33 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     };
   };
 
-  const openAreaModal = async (area: AreaDefinition) => {
+  const resolveViewAreaIdForSelection = (area: AreaDefinition, mode: AreaSubMode | null): string => {
+    if (
+      mode?.geoCategory &&
+      ['mountains', 'mountain', 'river', 'plain', 'lake'].includes(mode.geoCategory)
+    ) {
+      return `geo_${mode.geoCategory}`;
+    }
+    return area.id;
+  };
+
+  const openAreaModal = async (
+    area: AreaDefinition,
+    options?: { modeFilterIds?: string[]; modalTitle?: string },
+  ) => {
     playUiClick(config.seVolume);
+    const reqId = ++poolReqIdRef.current;
     setSelectedAreaId(area.id);
-    const defaultMode = area.modes[0] ?? null;
+    setSelectedModeFilterIds(options?.modeFilterIds ?? null);
+    setSelectedModalTitle(options?.modalTitle ?? null);
+
+    const candidateModes =
+      options?.modeFilterIds && options.modeFilterIds.length > 0
+        ? area.modes.filter((m) => options.modeFilterIds!.includes(m.id))
+        : area.modes;
+    const defaultMode = candidateModes[0] ?? area.modes[0] ?? null;
     setSelectedSubMode(defaultMode);
+
     if (defaultMode) {
       const base = inferSpecBase(area, defaultMode);
       const ids = await getModePoolIds(
@@ -256,6 +563,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         base.regionFilter,
         base.geoCategory,
       );
+      if (poolReqIdRef.current !== reqId) return;
       const cnt = Math.max(1, ids.length);
       setMaxCountForSub(cnt);
       setQuestionCount(cnt);
@@ -264,6 +572,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
   const handleSelectSubMode = async (area: AreaDefinition, mode: AreaSubMode) => {
     playUiClick(config.seVolume);
+    const reqId = ++poolReqIdRef.current;
     setSelectedSubMode(mode);
     const base = inferSpecBase(area, mode);
     const ids = await getModePoolIds(
@@ -272,6 +581,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       base.regionFilter,
       base.geoCategory,
     );
+    if (poolReqIdRef.current !== reqId) return;
     const cnt = Math.max(1, ids.length);
     setMaxCountForSub(cnt);
     setQuestionCount(cnt);
@@ -297,48 +607,59 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       fixedPieceIds,
     };
     setSelectedAreaId(null);
-    onStartGame(spec, null);
+    setSelectedModeFilterIds(null);
+    setSelectedModalTitle(null);
+    onStartGame(spec, null, 'areas');
   };
 
   const handleStartCustom = async () => {
-    const codes =
-      customSelectedPrefs.size > 0
-        ? Array.from(customSelectedPrefs)
-        : prefsData?.prefs.map((p) => p.code) ?? [];
+    if (customSelectedPrefs.size === 0 || customMaxAvailable === 0) return;
+    const codes = Array.from(customSelectedPrefs);
     const mapScope: GameSessionSpec['mapScope'] =
       customScope === 'prefectures' ? 'japan_prefs' : 'japan_munis';
     const regionFilter = customScope === 'cities' ? 'cities_custom' : undefined;
     const poolIds = await getModePoolIds(mapScope, codes, regionFilter);
     if (poolIds.length === 0) return;
-    const qCnt = Math.max(1, Math.min(poolIds.length, customCount));
+    const qCnt = Math.max(1, Math.min(poolIds.length, effectiveCustomCount));
     const fixedPieceIds = shuffleArray(poolIds).slice(0, qCnt);
-    setShowCustomModal(false);
-    onStartGame({
-      sessionId: `custom_${Date.now()}`,
-      areaId: 'custom',
-      areaName:
-        customScope === 'cities'
-          ? `カスタム・市（${codes.length}都道府県）`
-          : `カスタム（${codes.length}都道府県）`,
-      modeId:
-        customScope === 'cities'
+    const customModeId =
+      customScope === 'prefectures'
+        ? `custom_prefs_${customPlayKind}`
+        : customScope === 'cities'
           ? `custom_cities_${customPlayKind}`
-          : `custom_${customPlayKind}`,
-      modeLabel:
-        customPlayKind === 'puzzle'
-          ? 'パズル'
-          : customPlayKind === 'quiz'
-            ? 'クイズ'
-            : '読み方',
-      playKind: customPlayKind,
-      mapScope,
-      prefFilterCodes: codes,
-      regionFilter,
-      questionCount: qCnt,
-      maxCount: poolIds.length,
-      isCustomOrRandom: true,
-      fixedPieceIds,
-    });
+          : `custom_munis_${customPlayKind}`;
+    const customAreaName =
+      customScope === 'prefectures'
+        ? `カスタム・都道府県（${codes.length}都道府県）`
+        : customScope === 'cities'
+          ? `カスタム・市（${codes.length}都道府県）`
+          : `カスタム（${codes.length}都道府県）`;
+
+    setShowCustomModal(false);
+    onStartGame(
+      {
+        sessionId: `custom_${Date.now()}`,
+        areaId: 'custom',
+        areaName: customAreaName,
+        modeId: customModeId,
+        modeLabel:
+          customPlayKind === 'puzzle'
+            ? 'パズル'
+            : customPlayKind === 'quiz'
+              ? 'クイズ'
+              : '読み方',
+        playKind: customPlayKind,
+        mapScope,
+        prefFilterCodes: codes,
+        regionFilter,
+        questionCount: qCnt,
+        maxCount: poolIds.length,
+        isCustomOrRandom: true,
+        fixedPieceIds,
+      },
+      null,
+      'title',
+    );
   };
 
   const handleStartRandom = async () => {
@@ -349,7 +670,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     const regionFilter = randomPool === 'japan_cities' ? 'cities_all' : undefined;
     const poolIds = await getModePoolIds(mapScope, undefined, regionFilter);
     if (poolIds.length === 0) return;
-    const qCnt = Math.max(1, Math.min(poolIds.length, randomCount));
+    const qCnt = Math.max(1, Math.min(poolIds.length, effectiveRandomCount));
     const fixedPieceIds = shuffleArray(poolIds).slice(0, qCnt);
     const labelMap: Record<typeof randomPool, string> = {
       japan_munis: 'ランダム（全国市区町村）',
@@ -358,29 +679,33 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       geography_100: 'ランダム（自然地理100）',
     };
     setShowRandomModal(false);
-    onStartGame({
-      sessionId: `random_${Date.now()}`,
-      areaId: 'random',
-      areaName: labelMap[randomPool],
-      modeId: `random_${randomPool}_${effectivePlayKind}`,
-      modeLabel:
-        effectivePlayKind === 'puzzle'
-          ? 'パズル'
-          : effectivePlayKind === 'yomikata'
-            ? '読み方'
-            : 'クイズ',
-      playKind: effectivePlayKind,
-      mapScope,
-      regionFilter,
-      questionCount: qCnt,
-      maxCount: poolIds.length,
-      isCustomOrRandom: true,
-      fixedPieceIds,
-    });
+    onStartGame(
+      {
+        sessionId: `random_${Date.now()}`,
+        areaId: 'random',
+        areaName: labelMap[randomPool],
+        modeId: `random_${randomPool}_${effectivePlayKind}`,
+        modeLabel:
+          effectivePlayKind === 'puzzle'
+            ? 'パズル'
+            : effectivePlayKind === 'yomikata'
+              ? '読み方'
+              : 'クイズ',
+        playKind: effectivePlayKind,
+        mapScope,
+        regionFilter,
+        questionCount: qCnt,
+        maxCount: poolIds.length,
+        isCustomOrRandom: true,
+        fixedPieceIds,
+      },
+      null,
+      'title',
+    );
   };
 
   const handleOpenDataFromGameInfo = async (area: AreaDefinition) => {
-    const mode = selectedSubMode ?? area.modes[0];
+    const mode = selectedSubMode ?? visibleModalModes[0] ?? area.modes[0];
     const base = mode
       ? inferSpecBase(area, mode)
       : {
@@ -402,8 +727,63 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       questionCount: area.totalCount,
       maxCount: area.totalCount,
     });
-    setDataModalPieces({ title: area.name, pieces: loaded.allPoolPieces });
+    const viewAreaId = resolveViewAreaIdForSelection(area, mode ?? null);
+    setDataModalPieces({
+      title: selectedModalTitle ?? area.name,
+      viewAreaId,
+      pieces: loaded.allPoolPieces,
+    });
   };
+
+  const renderCardBadges = (modes: AreaSubMode[]) => {
+    const clearedModes = modes.filter((m) => (records[m.id]?.clearCount ?? 0) > 0).length;
+    const noMissModes = modes.filter((m) => Boolean(records[m.id]?.noMissCleared)).length;
+    const cardMistakes = modes.reduce((s, m) => s + (mistakesByModeId.get(m.id) ?? 0), 0);
+    const hasAutoSave =
+      Boolean(autoSave) && modes.some((m) => m.id === autoSave?.spec.modeId);
+
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+        {hasAutoSave && (
+          <span
+            className="submode-mistake-pill"
+            style={{
+              marginLeft: 0,
+              background: '#ffedd5',
+              color: '#9a3412',
+              borderColor: '#fdba74',
+            }}
+          >
+            途中
+          </span>
+        )}
+        {cardMistakes > 0 && (
+          <span className="submode-mistake-pill" style={{ marginLeft: 0 }}>
+            復習 {cardMistakes}
+          </span>
+        )}
+        {noMissModes > 0 && (
+          <span className="crown-badge" title={`ノーミス達成 ${noMissModes}/${modes.length}`}>
+            ★{noMissModes === modes.length ? '' : noMissModes}
+          </span>
+        )}
+        {clearedModes > 0 && (
+          <span className="area-card-clear-badge">
+            ✓ {clearedModes}/{modes.length}
+          </span>
+        )}
+      </span>
+    );
+  };
+
+  const activeDirectCards =
+    categoryTab === 'japan'
+      ? japanCards
+      : categoryTab === 'municipalities'
+        ? municipalityCards
+        : categoryTab === 'cities'
+          ? cityCards
+          : null;
 
   return (
     <div className="title-screen-shell">
@@ -414,9 +794,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               <div className="title-badge">精巧白地図版 ・ 日本地理学習ゲーム</div>
               <span className="title-version-badge">Release {APP_VERSION_LABEL}</span>
             </div>
-            <h1 className="title-main-heading">
-              全国市区町村パズル＆地理クイズ
-            </h1>
+            <h1 className="title-main-heading">全国市区町村パズル＆地理クイズ</h1>
             <p className="title-subtitle">
               全国 {totalMunis.toLocaleString()} 市区町村（全 {totalCities.toLocaleString()} 市・北方領土6村・政令指定都市対応）、47都道府県・県庁所在地、日本の自然地理100選の精巧白地図学習ゲーム
             </p>
@@ -467,6 +845,20 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 />
               </svg>
             )}
+
+            <div className="home-mastery-strip" aria-label="学習進捗サマリー">
+              <span>都道府県クリア: <strong>{masteryStats.clearedPrefs}/47</strong></span>
+              <span>
+                モード制覇: <strong>{masteryStats.clearedModes}/{masteryStats.totalModes}</strong>
+              </span>
+              <span>
+                ノーミス: <strong>★ {masteryStats.noMissCount}</strong>
+              </span>
+              <span>
+                要復習: <strong>{mistakes.length}件</strong>
+              </span>
+            </div>
+
             <div className="title-version-footer">Version {APP_VERSION_LABEL}</div>
           </div>
 
@@ -484,20 +876,42 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </button>
 
             {autoSave && (
-              <button
-                type="button"
-                className="menu-btn menu-btn-resume"
-                onClick={() => {
-                  playUiClick(config.seVolume);
-                  onStartGame(autoSave.spec, autoSave);
-                }}
-              >
-                <span className="menu-btn-title">前回のオートセーブから</span>
-                <span className="menu-btn-sub">
-                  {autoSave.title}（{autoSave.completedIds.length}/
-                  {autoSave.targetPieceIds.length}）
-                </span>
-              </button>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'stretch', gap: '6px' }}>
+                <button
+                  type="button"
+                  className="menu-btn menu-btn-resume"
+                  style={{ flex: 1 }}
+                  onClick={() => {
+                    playUiClick(config.seVolume);
+                    onStartGame(autoSave.spec, autoSave, 'title');
+                  }}
+                >
+                  <span className="menu-btn-title">前回のオートセーブから</span>
+                  <span className="menu-btn-sub">
+                    {autoSave.title}（{autoSave.completedIds.length}/
+                    {autoSave.targetPieceIds.length} ・ {formatTimeMs(autoSave.elapsedMs)} ・{' '}
+                    {new Date(autoSave.savedAt).toLocaleString('ja-JP')}）
+                  </span>
+                </button>
+                {onClearAutoSave && (
+                  <button
+                    type="button"
+                    className={`autosave-dismiss-btn ${confirmDismissAutoSave ? 'confirm-inline-btn' : ''}`}
+                    title="オートセーブを破棄"
+                    aria-label="オートセーブを破棄"
+                    onClick={() => {
+                      if (!confirmDismissAutoSave) {
+                        setConfirmDismissAutoSave(true);
+                        return;
+                      }
+                      setConfirmDismissAutoSave(false);
+                      onClearAutoSave();
+                    }}
+                  >
+                    {confirmDismissAutoSave ? '破棄?' : '✕'}
+                  </button>
+                )}
+              </div>
             )}
 
             <button
@@ -508,9 +922,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 setShowMistakeModal(true);
               }}
             >
-              <span className="menu-btn-title">
-                間違えた問題を復習（{mistakes.length}件）
-              </span>
+              <span className="menu-btn-title">間違えた問題を復習（{mistakes.length}件）</span>
               <span className="menu-btn-sub">
                 {mistakes.length > 0
                   ? 'ミスした市区町村・都道府県・地理問題だけ集中練習'
@@ -527,9 +939,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               }}
             >
               <span className="menu-btn-title">つづきから（手動セーブ）</span>
-              <span className="menu-btn-sub">
-                保存済みデータ: {manualSaves.length}件
-              </span>
+              <span className="menu-btn-sub">保存済みデータ: {manualSaves.length}件</span>
             </button>
 
             <div className="menu-btn-split">
@@ -563,11 +973,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 className="menu-btn"
                 onClick={() => {
                   playUiClick(config.seVolume);
-                  onStartView('00_japan');
+                  onStartView('00_japan', { returnTo: 'title' });
                 }}
               >
                 <span className="menu-btn-title">白地図閲覧・データ</span>
-                <span className="menu-btn-sub">標高図切替・11種集計テーブル</span>
+                <span className="menu-btn-sub">自然地理100・標高図・集計テーブル</span>
               </button>
               <button
                 type="button"
@@ -577,8 +987,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                   setShowOtherModal(true);
                 }}
               >
-                <span className="menu-btn-title">その他・設定・出典</span>
-                <span className="menu-btn-sub">更新履歴 / 画質 / AutoSave / FPS</span>
+                <span className="menu-btn-title">設定・更新履歴・出典</span>
+                <span className="menu-btn-sub">詳細設定 / 更新履歴 / AutoSave / FPS</span>
               </button>
             </div>
           </nav>
@@ -627,73 +1037,158 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </button>
           </div>
 
-          <div className="area-cards-grid">
-            {filteredAreas.map((a) => {
-              const clearedModes = a.modes.filter((m) => (records[m.id]?.clearCount ?? 0) > 0).length;
-              return (
+          {activeDirectCards && (
+            <div className="area-cards-grid">
+              {activeDirectCards.map((c) => (
                 <button
-                  key={a.id}
+                  key={c.key}
                   type="button"
                   className="area-card-btn"
-                  onClick={() => void openAreaModal(a)}
+                  onClick={() =>
+                    void openAreaModal(c.area, {
+                      modeFilterIds: c.modes.map((m) => m.id),
+                      modalTitle: c.name,
+                    })
+                  }
                 >
                   <div className="area-card-top">
-                    <span className="area-card-ruby">{a.ruby}</span>
-                    {clearedModes > 0 && (
-                      <span className="area-card-clear-badge">
-                        ✓ {clearedModes}/{a.modes.length}
-                      </span>
-                    )}
+                    <span className="area-card-ruby">{c.ruby}</span>
+                    {renderCardBadges(c.modes)}
                   </div>
-                  <div className="area-card-name">{a.name}</div>
-                  <div className="area-card-sub">{a.subTitle}</div>
+                  <div className="area-card-name">{c.name}</div>
+                  <div className="area-card-sub">{c.subTitle}</div>
                 </button>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
+
+          {categoryTab === 'prefecture' && (
+            <>
+              <div className="area-search-bar">
+                <input
+                  type="search"
+                  placeholder="都道府県・ふりがな・県庁所在地で検索..."
+                  aria-label="都道府県を検索"
+                  value={areaSearch}
+                  onChange={(e) => setAreaSearch(e.target.value)}
+                />
+                <div className="area-filter-pills" role="group" aria-label="状態フィルタ">
+                  <button
+                    type="button"
+                    className={areaStatusFilter === 'all' ? 'active' : ''}
+                    onClick={() => setAreaStatusFilter('all')}
+                  >
+                    すべて
+                  </button>
+                  <button
+                    type="button"
+                    className={areaStatusFilter === 'uncleared' ? 'active' : ''}
+                    onClick={() => setAreaStatusFilter('uncleared')}
+                  >
+                    未クリア
+                  </button>
+                  <button
+                    type="button"
+                    className={areaStatusFilter === 'mistakes' ? 'active' : ''}
+                    onClick={() => setAreaStatusFilter('mistakes')}
+                  >
+                    復習あり
+                  </button>
+                </div>
+              </div>
+
+              {groupedPrefRegions.length === 0 ? (
+                <p className="empty-hint">条件に一致する都道府県はありません。</p>
+              ) : (
+                groupedPrefRegions.map((rg) => (
+                  <div key={rg.id}>
+                    <h3 className="area-region-heading">{rg.label}</h3>
+                    <div className="area-cards-grid">
+                      {rg.items.map((a) => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          className="area-card-btn"
+                          onClick={() => void openAreaModal(a)}
+                        >
+                          <div className="area-card-top">
+                            <span className="area-card-ruby">{a.ruby}</span>
+                            {renderCardBadges(a.modes)}
+                          </div>
+                          <div className="area-card-name">{a.name}</div>
+                          <div className="area-card-sub">{a.subTitle}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </>
+          )}
         </section>
       )}
 
       {/* GameInfo Modal */}
       {selectedArea && (
-        <div className="modal-backdrop" onClick={() => setSelectedAreaId(null)}>
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            setSelectedAreaId(null);
+            setSelectedModeFilterIds(null);
+            setSelectedModalTitle(null);
+          }}
+        >
           <div
             className="modal-card gameinfo-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={selectedModalTitle ?? selectedArea.name}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-header">
               <div className="gameinfo-nav-row">
-                <button
-                  type="button"
-                  className="btn-ghost btn-xs"
-                  onClick={() => {
-                    const idx = areas.findIndex((a) => a.id === selectedArea.id);
-                    const prev = areas[(idx - 1 + areas.length) % areas.length];
-                    void openAreaModal(prev);
-                  }}
-                >
-                  ◀ Prev
-                </button>
+                {selectedArea.category === 'prefecture' && (
+                  <button
+                    type="button"
+                    className="btn-ghost btn-xs"
+                    onClick={() => {
+                      const prefList = areas.filter((a) => a.category === 'prefecture');
+                      const idx = prefList.findIndex((a) => a.id === selectedArea.id);
+                      const prev = prefList[(idx - 1 + prefList.length) % prefList.length];
+                      if (prev) void openAreaModal(prev);
+                    }}
+                  >
+                    ◀ 前の県
+                  </button>
+                )}
                 <div>
                   <span className="gameinfo-ruby">{selectedArea.ruby}</span>
-                  <h3>{selectedArea.name}</h3>
+                  <h3>{selectedModalTitle ?? selectedArea.name}</h3>
                 </div>
-                <button
-                  type="button"
-                  className="btn-ghost btn-xs"
-                  onClick={() => {
-                    const idx = areas.findIndex((a) => a.id === selectedArea.id);
-                    const next = areas[(idx + 1) % areas.length];
-                    void openAreaModal(next);
-                  }}
-                >
-                  Next ▶
-                </button>
+                {selectedArea.category === 'prefecture' && (
+                  <button
+                    type="button"
+                    className="btn-ghost btn-xs"
+                    onClick={() => {
+                      const prefList = areas.filter((a) => a.category === 'prefecture');
+                      const idx = prefList.findIndex((a) => a.id === selectedArea.id);
+                      const next = prefList[(idx + 1) % prefList.length];
+                      if (next) void openAreaModal(next);
+                    }}
+                  >
+                    次の県 ▶
+                  </button>
+                )}
               </div>
               <button
                 type="button"
                 className="modal-close-btn"
-                onClick={() => setSelectedAreaId(null)}
+                aria-label="閉じる"
+                onClick={() => {
+                  setSelectedAreaId(null);
+                  setSelectedModeFilterIds(null);
+                  setSelectedModalTitle(null);
+                }}
               >
                 ✕
               </button>
@@ -707,9 +1202,11 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     type="button"
                     className="btn-secondary btn-xs"
                     onClick={() => {
-                      const id = selectedArea.id;
+                      const viewId = resolveViewAreaIdForSelection(selectedArea, selectedSubMode);
                       setSelectedAreaId(null);
-                      onStartView(id);
+                      setSelectedModeFilterIds(null);
+                      setSelectedModalTitle(null);
+                      onStartView(viewId, { returnTo: 'areas' });
                     }}
                   >
                     👁 閲覧
@@ -732,11 +1229,34 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 </div>
               </div>
 
-              <h4>モード一覧</h4>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                }}
+              >
+                <h4 style={{ margin: 0 }}>モード一覧</h4>
+                {selectedModeFilterIds &&
+                  selectedArea.modes.length > visibleModalModes.length && (
+                    <button
+                      type="button"
+                      className="btn-ghost btn-xs"
+                      onClick={() => {
+                        setSelectedModeFilterIds(null);
+                        setSelectedModalTitle(null);
+                      }}
+                    >
+                      全{selectedArea.modes.length}モードを表示
+                    </button>
+                  )}
+              </div>
+
               <div className="submode-list">
-                {selectedArea.modes.map((m) => {
+                {visibleModalModes.map((m) => {
                   const rec = records[m.id];
-                  const modeMistakeCount = mistakes.filter((x) => x.modeId === m.id).length;
+                  const modeMistakeCount = mistakesByModeId.get(m.id) ?? 0;
                   const active = selectedSubMode?.id === m.id;
                   return (
                     <button
@@ -748,9 +1268,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       <span className="submode-name">
                         {m.label}
                         {modeMistakeCount > 0 && (
-                          <span className="submode-mistake-pill">
-                            復習 {modeMistakeCount}
-                          </span>
+                          <span className="submode-mistake-pill">復習 {modeMistakeCount}</span>
                         )}
                       </span>
                       <span className="submode-record">
@@ -775,13 +1293,27 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 <div className="question-count-box">
                   <div className="qcount-top">
                     <span>
-                      問題数: <strong>{questionCount}</strong> / {maxCountForSub}
+                      問題数: <strong>{Math.min(questionCount, maxCountForSub)}</strong> /{' '}
+                      {maxCountForSub}
                     </span>
                     <div className="qcount-step-btns">
+                      {maxCountForSub > 10 && (
+                        <button
+                          type="button"
+                          className="btn-ghost btn-xs"
+                          onClick={() =>
+                            setQuestionCount((c) => Math.max(1, Math.min(c, maxCountForSub) - 5))
+                          }
+                        >
+                          −5
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="btn-ghost btn-xs"
-                        onClick={() => setQuestionCount((c) => Math.max(1, c - 1))}
+                        onClick={() =>
+                          setQuestionCount((c) => Math.max(1, Math.min(c, maxCountForSub) - 1))
+                        }
                       >
                         −
                       </button>
@@ -794,15 +1326,54 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       >
                         ＋
                       </button>
+                      {maxCountForSub > 10 && (
+                        <button
+                          type="button"
+                          className="btn-ghost btn-xs"
+                          onClick={() =>
+                            setQuestionCount((c) => Math.min(maxCountForSub, c + 5))
+                          }
+                        >
+                          ＋5
+                        </button>
+                      )}
                     </div>
                   </div>
                   <input
                     type="range"
                     min={1}
                     max={maxCountForSub}
-                    value={questionCount}
+                    value={Math.min(questionCount, maxCountForSub)}
                     onChange={(e) => setQuestionCount(Number(e.target.value))}
+                    aria-label="出題数"
                   />
+                  {maxCountForSub > 10 && (
+                    <div className="qcount-step-btns" style={{ flexWrap: 'wrap' }}>
+                      {COUNT_PRESETS.filter((n) => n < maxCountForSub).map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          className={
+                            questionCount === n ? 'btn-primary btn-xs' : 'btn-secondary btn-xs'
+                          }
+                          onClick={() => setQuestionCount(n)}
+                        >
+                          {n}問
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        className={
+                          questionCount >= maxCountForSub
+                            ? 'btn-primary btn-xs'
+                            : 'btn-secondary btn-xs'
+                        }
+                        onClick={() => setQuestionCount(maxCountForSub)}
+                      >
+                        全問 ({maxCountForSub})
+                      </button>
+                    </div>
+                  )}
                   <div className="qcount-note">
                     クリアタイムは最大数（{maxCountForSub}）のときのみ保存します
                   </div>
@@ -830,17 +1401,23 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                       onClick={() => {
                         const base = inferSpecBase(selectedArea, selectedSubMode);
                         setSelectedAreaId(null);
-                        onStartGame({
-                          ...base,
-                          sessionId: `review_${selectedSubMode.id}_${Date.now()}`,
-                          modeLabel: `${selectedSubMode.label}（復習）`,
-                          questionCount: uniqueIds.length,
-                          maxCount: uniqueIds.length,
-                          isCustomOrRandom: true,
-                          isReviewMode: true,
-                          reviewSourceKeys,
-                          fixedPieceIds: uniqueIds,
-                        });
+                        setSelectedModeFilterIds(null);
+                        setSelectedModalTitle(null);
+                        onStartGame(
+                          {
+                            ...base,
+                            sessionId: `review_${selectedSubMode.id}_${Date.now()}`,
+                            modeLabel: `${selectedSubMode.label}（復習）`,
+                            questionCount: uniqueIds.length,
+                            maxCount: uniqueIds.length,
+                            isCustomOrRandom: true,
+                            isReviewMode: true,
+                            reviewSourceKeys,
+                            fixedPieceIds: uniqueIds,
+                          },
+                          null,
+                          'areas',
+                        );
                       }}
                     >
                       🔁 間違えた問題のみ挑戦（{uniqueIds.length}問）
@@ -855,7 +1432,9 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                     className="btn-secondary"
                     onClick={() => {
                       setSelectedAreaId(null);
-                      onStartGame(autoSave.spec, autoSave);
+                      setSelectedModeFilterIds(null);
+                      setSelectedModalTitle(null);
+                      onStartGame(autoSave.spec, autoSave, 'areas');
                     }}
                   >
                     つづきから再開（{autoSave.completedIds.length}/
@@ -883,22 +1462,29 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           saves={manualSaves}
           onLoadSave={(s) => {
             setShowManualModal(false);
-            onStartGame(s.spec, s);
+            onStartGame(s.spec, s, 'title');
           }}
           onDeleteSave={onDeleteManualSave}
           onClose={() => setShowManualModal(false)}
         />
       )}
 
-      {/* Custom Mode Modal (Training2) */}
+      {/* Custom Mode Modal */}
       {showCustomModal && (
         <div className="modal-backdrop" onClick={() => setShowCustomModal(false)}>
-          <div className="modal-card custom-modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-card custom-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="カスタムモード"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <h3>カスタムモード（複数エリア組み合わせ）</h3>
               <button
                 type="button"
                 className="modal-close-btn"
+                aria-label="閉じる"
                 onClick={() => setShowCustomModal(false)}
               >
                 ✕
@@ -961,26 +1547,45 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 >
                   クリア
                 </button>
-                {JAPAN_REGION_JUMPS.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    className="btn-secondary btn-xs"
-                    onClick={() => {
-                      setCustomSelectedPrefs((prev) => {
-                        const next = new Set(prev);
-                        const allOn = r.prefCodes.every((c) => next.has(c));
-                        for (const c of r.prefCodes) {
-                          if (allOn) next.delete(c);
-                          else next.add(c);
-                        }
-                        return next;
-                      });
-                    }}
-                  >
-                    {r.short}
-                  </button>
-                ))}
+                {JAPAN_REGION_JUMPS.map((r) => {
+                  const selectedInRegion = r.prefCodes.filter((c) =>
+                    customSelectedPrefs.has(c),
+                  ).length;
+                  const allOn = selectedInRegion === r.prefCodes.length;
+                  const partial = selectedInRegion > 0 && !allOn;
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      className={
+                        allOn
+                          ? 'btn-primary btn-xs'
+                          : partial
+                            ? 'btn-warning btn-xs'
+                            : 'btn-secondary btn-xs'
+                      }
+                      aria-pressed={allOn}
+                      onClick={() => {
+                        setCustomSelectedPrefs((prev) => {
+                          const next = new Set(prev);
+                          const isAll = r.prefCodes.every((c) => next.has(c));
+                          for (const c of r.prefCodes) {
+                            if (isAll) next.delete(c);
+                            else next.add(c);
+                          }
+                          return next;
+                        });
+                      }}
+                    >
+                      {r.short}
+                      {partial ? ` (${selectedInRegion}/${r.prefCodes.length})` : ''}
+                    </button>
+                  );
+                })}
+                <span className="muted" style={{ marginLeft: 'auto', fontWeight: 700 }}>
+                  選択中: {customSelectedPrefs.size}都道府県（対象{' '}
+                  {customMaxAvailable.toLocaleString()}件）
+                </span>
               </div>
 
               {prefsData && (
@@ -1056,22 +1661,29 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               <div className="question-count-box">
                 <div className="qcount-top">
                   <span>
-                    出題数: <strong>{Math.min(customCount, customMaxAvailable)}</strong> /{' '}
-                    {customMaxAvailable}
+                    出題数: <strong>{effectiveCustomCount}</strong> / {customMaxAvailable}
                   </span>
                   <div className="qcount-step-btns">
                     <button
                       type="button"
                       className="btn-ghost btn-xs"
-                      onClick={() => setCustomCount((c) => Math.max(1, c - 5))}
+                      disabled={customMaxAvailable === 0}
+                      onClick={() =>
+                        setCustomCount((c) =>
+                          Math.max(1, Math.min(c, customMaxAvailable) - 5),
+                        )
+                      }
                     >
                       −5
                     </button>
                     <button
                       type="button"
                       className="btn-ghost btn-xs"
+                      disabled={customMaxAvailable === 0}
                       onClick={() =>
-                        setCustomCount((c) => Math.min(customMaxAvailable, c + 5))
+                        setCustomCount((c) =>
+                          Math.min(customMaxAvailable, Math.min(c, customMaxAvailable) + 5),
+                        )
                       }
                     >
                       ＋5
@@ -1080,18 +1692,56 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 </div>
                 <input
                   type="range"
-                  min={1}
+                  min={customMaxAvailable > 0 ? 1 : 0}
                   max={Math.max(1, customMaxAvailable)}
-                  value={Math.min(customCount, customMaxAvailable)}
+                  disabled={customMaxAvailable === 0}
+                  value={effectiveCustomCount}
                   onChange={(e) => setCustomCount(Number(e.target.value))}
+                  aria-label="カスタム出題数"
                 />
+                {customMaxAvailable > 0 && (
+                  <div className="qcount-step-btns" style={{ flexWrap: 'wrap' }}>
+                    {COUNT_PRESETS.filter((n) => n < customMaxAvailable).map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        className={
+                          effectiveCustomCount === n
+                            ? 'btn-primary btn-xs'
+                            : 'btn-secondary btn-xs'
+                        }
+                        onClick={() => setCustomCount(n)}
+                      >
+                        {n}問
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className={
+                        effectiveCustomCount >= customMaxAvailable
+                          ? 'btn-primary btn-xs'
+                          : 'btn-secondary btn-xs'
+                      }
+                      onClick={() => setCustomCount(customMaxAvailable)}
+                    >
+                      全問 ({customMaxAvailable})
+                    </button>
+                  </div>
+                )}
                 <div className="qcount-note">
-                  ※カスタムモードでは途中セーブ・クリア記録は残りません
+                  {customSelectedPrefs.size === 0
+                    ? '1つ以上の都道府県を選択してください（全国全選択ボタンも利用できます）'
+                    : '※カスタムモードでは途中セーブ・クリア記録は残りません（ミスした問題は復習リストへ記憶されます）'}
                 </div>
               </div>
             </div>
             <div className="modal-footer">
-              <button type="button" className="btn-primary" onClick={() => void handleStartCustom()}>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={customSelectedPrefs.size === 0 || customMaxAvailable === 0}
+                onClick={() => void handleStartCustom()}
+              >
                 カスタム開始
               </button>
             </div>
@@ -1102,12 +1752,19 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       {/* Random Mode Modal */}
       {showRandomModal && (
         <div className="modal-backdrop" onClick={() => setShowRandomModal(false)}>
-          <div className="modal-card confirm-modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-card confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="ランダムモード"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <h3>ランダムモード</h3>
               <button
                 type="button"
                 className="modal-close-btn"
+                aria-label="閉じる"
                 onClick={() => setShowRandomModal(false)}
               >
                 ✕
@@ -1169,24 +1826,79 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               <div className="question-count-box">
                 <div className="qcount-top">
                   <span>
-                    問題数: <strong>{Math.min(randomCount, randomMaxAvailable)}</strong> /{' '}
-                    {randomMaxAvailable}
+                    問題数: <strong>{effectiveRandomCount}</strong> / {randomMaxAvailable}
                   </span>
+                  <div className="qcount-step-btns">
+                    <button
+                      type="button"
+                      className="btn-ghost btn-xs"
+                      onClick={() =>
+                        setRandomCount((c) =>
+                          Math.max(1, Math.min(c, randomMaxAvailable) - 5),
+                        )
+                      }
+                    >
+                      −5
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost btn-xs"
+                      onClick={() =>
+                        setRandomCount((c) =>
+                          Math.min(randomMaxAvailable, Math.min(c, randomMaxAvailable) + 5),
+                        )
+                      }
+                    >
+                      ＋5
+                    </button>
+                  </div>
                 </div>
                 <input
                   type="range"
                   min={1}
                   max={randomMaxAvailable}
-                  value={Math.min(randomCount, randomMaxAvailable)}
+                  value={effectiveRandomCount}
                   onChange={(e) => setRandomCount(Number(e.target.value))}
+                  aria-label="ランダム出題数"
                 />
+                <div className="qcount-step-btns" style={{ flexWrap: 'wrap' }}>
+                  {COUNT_PRESETS.filter((n) => n < randomMaxAvailable).map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      className={
+                        effectiveRandomCount === n
+                          ? 'btn-primary btn-xs'
+                          : 'btn-secondary btn-xs'
+                      }
+                      onClick={() => setRandomCount(n)}
+                    >
+                      {n}問
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className={
+                      effectiveRandomCount >= randomMaxAvailable
+                        ? 'btn-primary btn-xs'
+                        : 'btn-secondary btn-xs'
+                    }
+                    onClick={() => setRandomCount(randomMaxAvailable)}
+                  >
+                    全問 ({randomMaxAvailable})
+                  </button>
+                </div>
                 <div className="qcount-note">
-                  ※ランダムモードでは途中セーブ・クリア記録は残りません
+                  ※ランダムモードでは途中セーブ・クリア記録は残りません（ミスした問題は復習リストへ記憶されます）
                 </div>
               </div>
             </div>
             <div className="modal-footer">
-              <button type="button" className="btn-primary" onClick={() => void handleStartRandom()}>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => void handleStartRandom()}
+              >
                 ランダム開始
               </button>
             </div>
@@ -1197,12 +1909,19 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       {/* Other Settings / Info Modal */}
       {showOtherModal && (
         <div className="modal-backdrop" onClick={() => setShowOtherModal(false)}>
-          <div className="modal-card other-modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-card other-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="設定・更新履歴・情報"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
-              <h3>その他・環境設定・情報</h3>
+              <h3>設定・更新履歴・情報</h3>
               <button
                 type="button"
                 className="modal-close-btn"
+                aria-label="閉じる"
                 onClick={() => setShowOtherModal(false)}
               >
                 ✕
@@ -1213,7 +1932,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
                 [
                   ['changelog', '更新履歴'],
                   ['sound', 'サウンド'],
-                  ['quality', '画質設定'],
+                  ['quality', '描画負荷'],
                   ['autosave', 'オートセーブ'],
                   ['fps', 'FPS設定'],
                   ['source', '出典'],
@@ -1232,6 +1951,33 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </div>
 
             <div className="modal-body other-body">
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                  padding: '8px 10px',
+                  borderRadius: '10px',
+                  background: 'var(--bg-muted)',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span style={{ fontSize: '0.82rem', fontWeight: 700 }}>
+                  地図スタイル・クイズ配置・ヒント表示などの詳細設定
+                </span>
+                <button
+                  type="button"
+                  className="btn-primary btn-xs"
+                  onClick={() => {
+                    setShowOtherModal(false);
+                    setShowSettingsModal(true);
+                  }}
+                >
+                  ⚙ 詳細設定を開く
+                </button>
+              </div>
+
               {otherTab === 'changelog' && (
                 <div className="changelog-list">
                   {CHANGELOG_ITEMS.map((item) => (
@@ -1273,24 +2019,24 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
               {otherTab === 'quality' && (
                 <div className="other-pane">
-                  <p>地図ベクター描画・操作アニメーション品質を選択します。</p>
-                  <div className="btn-group">
-                    {(
-                      [
-                        ['high', '高画質'],
-                        ['medium', '標準'],
-                        ['low', '軽量'],
-                      ] as const
-                    ).map(([q, lbl]) => (
-                      <button
-                        key={q}
-                        type="button"
-                        className={config.quality === q ? 'active' : ''}
-                        onClick={() => onConfigChange({ ...config, quality: q })}
-                      >
-                        {lbl}
-                      </button>
-                    ))}
+                  <p>
+                    画面エフェクト（ぼかし効果・アニメーション）の負荷を選択します。動作が重い端末では「軽量」をお試しください。
+                  </p>
+                  <div className="segmented-control" role="group" aria-label="描画品質">
+                    <button
+                      type="button"
+                      className={config.quality !== 'low' ? 'active' : ''}
+                      onClick={() => onConfigChange({ ...config, quality: 'high' })}
+                    >
+                      標準・高
+                    </button>
+                    <button
+                      type="button"
+                      className={config.quality === 'low' ? 'active' : ''}
+                      onClick={() => onConfigChange({ ...config, quality: 'low' })}
+                    >
+                      軽量（省負荷）
+                    </button>
                   </div>
                 </div>
               )}
@@ -1383,12 +2129,20 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         </div>
       )}
 
+      {showSettingsModal && (
+        <ConfigModal
+          config={config}
+          onChange={onConfigChange}
+          onClose={() => setShowSettingsModal(false)}
+        />
+      )}
+
       {showMistakeModal && (
         <MistakeReviewModal
           mistakes={mistakes}
           onStartReview={(spec) => {
             setShowMistakeModal(false);
-            onStartGame(spec, null);
+            onStartGame(spec, null, 'title');
           }}
           onDeleteEntry={onDeleteMistakeEntry}
           onClearMode={onClearModeMistakes}
@@ -1401,14 +2155,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         <DataTableModal
           title={dataModalPieces.title}
           pieces={dataModalPieces.pieces}
-          onSelectPiece={() => {
-            // Switch straight to ViewMode of current area if inspecting from GameInfo
-            if (selectedArea) {
-              const id = selectedArea.id;
-              setDataModalPieces(null);
-              setSelectedAreaId(null);
-              onStartView(id);
-            }
+          onSelectPiece={(piece) => {
+            const viewId = dataModalPieces.viewAreaId;
+            setDataModalPieces(null);
+            setSelectedAreaId(null);
+            setSelectedModeFilterIds(null);
+            setSelectedModalTitle(null);
+            onStartView(viewId, { focusPieceId: piece.id, returnTo: 'areas' });
           }}
           onClose={() => setDataModalPieces(null)}
         />

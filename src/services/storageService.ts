@@ -101,6 +101,7 @@ export function recordModeClear(
   questionCount: number,
   maxCount: number,
   isCustomOrRandom: boolean,
+  hintsUsed = 0,
 ): { record: ModeBestRecord | null; isNewBest: boolean } {
   // クリアタイムは最大問題数のときのみ保存します
   if (isCustomOrRandom || questionCount < maxCount) {
@@ -115,7 +116,7 @@ export function recordModeClear(
     bestTimeMs: isNewBest ? elapsedMs : (prev?.bestTimeMs ?? elapsedMs),
     minMisses,
     clearCount: (prev?.clearCount ?? 0) + 1,
-    noMissCleared: Boolean(prev?.noMissCleared || misses === 0),
+    noMissCleared: Boolean(prev?.noMissCleared || (misses === 0 && hintsUsed === 0)),
   };
   all[modeId] = next;
   safeWrite(KEYS.RECORDS, all);
@@ -163,12 +164,21 @@ export function deleteManualSave(slotId: string): SavedProgress[] {
 }
 
 export function loadTags(): MapTag[] {
-  const tags = safeRead<MapTag[]>(KEYS.TAGS, []);
-  if (tags.length === 0) {
-    safeWrite(KEYS.TAGS, DEFAULT_TAGS);
-    return DEFAULT_TAGS;
+  try {
+    const raw = window.localStorage.getItem(KEYS.TAGS);
+    if (raw === null) {
+      safeWrite(KEYS.TAGS, DEFAULT_TAGS);
+      return DEFAULT_TAGS;
+    }
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed as MapTag[];
+    }
+  } catch {
+    // Fall through to default
   }
-  return tags;
+  safeWrite(KEYS.TAGS, DEFAULT_TAGS);
+  return DEFAULT_TAGS;
 }
 
 export function saveTags(tags: MapTag[]): void {

@@ -4,19 +4,19 @@
  * or strait-adjacent prefectures share the same color index.
  */
 export const PREF_MUTED_PALETTE = [
-  '#f3eee3', // Soft Warm Sand
-  '#e7f1e8', // Soft Sage Mist
-  '#f4eaed', // Soft Dusty Rose
-  '#ebedf6', // Soft Lavender Mist
-  '#f3f2df', // Soft Pale Butter
+  '#f7f0df', // Warm Cream Sand
+  '#e4f2e6', // Fresh Sage Mist
+  '#f7e8ec', // Soft Blossom Rose
+  '#e8ecfa', // Clear Periwinkle Mist
+  '#f6f4d8', // Soft Butter Cream
 ] as const;
 
 export const PREF_MUTED_CONTEXT_PALETTE = [
-  '#e7e1d5',
-  '#dae5db',
-  '#e8dde0',
-  '#dfe2ec',
-  '#e6e5d1',
+  '#dce1e8', // Cool Slate Neutral 1
+  '#d8dfe6', // Cool Slate Neutral 2
+  '#dee1e8', // Cool Slate Neutral 3
+  '#d9dfe9', // Cool Slate Neutral 4
+  '#dde1e6', // Cool Slate Neutral 5
 ] as const;
 
 export const PREF_COLOR_INDEX: Record<string, number> = {

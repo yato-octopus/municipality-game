@@ -1,3 +1,4 @@
+import { APP_VERSION } from '../version';
 import {
   HOKKAIDO_SUB_REGIONS,
   TIHOU_MUNI_GROUPS,
@@ -37,6 +38,7 @@ export interface LoadedSessionMap {
 }
 
 const DATA_BASE = `${import.meta.env.BASE_URL}data`;
+const DATA_CACHE_QUERY = `?v=${encodeURIComponent(APP_VERSION)}`;
 
 let prefsPromise: Promise<JapanPrefsData> | null = null;
 let muniIndexPromise: Promise<MunicipalityMeta[]> | null = null;
@@ -44,7 +46,7 @@ let muniPathsPromise: Promise<Record<string, string>> | null = null;
 let geo100Promise: Promise<GeographyFeature[]> | null = null;
 
 async function fetchJson<T>(relPath: string): Promise<T> {
-  const res = await fetch(`${DATA_BASE}/${relPath}`);
+  const res = await fetch(`${DATA_BASE}/${relPath}${DATA_CACHE_QUERY}`);
   if (!res.ok) {
     throw new Error(`地図データの読み込みに失敗しました (${relPath}: ${res.status})`);
   }
@@ -52,22 +54,42 @@ async function fetchJson<T>(relPath: string): Promise<T> {
 }
 
 export function loadJapanPrefs(): Promise<JapanPrefsData> {
-  if (!prefsPromise) prefsPromise = fetchJson<JapanPrefsData>('japan_prefs.json');
+  if (!prefsPromise) {
+    prefsPromise = fetchJson<JapanPrefsData>('japan_prefs.json').catch((err) => {
+      prefsPromise = null;
+      throw err;
+    });
+  }
   return prefsPromise;
 }
 
 export function loadMuniIndex(): Promise<MunicipalityMeta[]> {
-  if (!muniIndexPromise) muniIndexPromise = fetchJson<MunicipalityMeta[]>('muni/index.json');
+  if (!muniIndexPromise) {
+    muniIndexPromise = fetchJson<MunicipalityMeta[]>('muni/index.json').catch((err) => {
+      muniIndexPromise = null;
+      throw err;
+    });
+  }
   return muniIndexPromise;
 }
 
 export function loadMuniPaths(): Promise<Record<string, string>> {
-  if (!muniPathsPromise) muniPathsPromise = fetchJson<Record<string, string>>('muni/all_paths.json');
+  if (!muniPathsPromise) {
+    muniPathsPromise = fetchJson<Record<string, string>>('muni/all_paths.json').catch((err) => {
+      muniPathsPromise = null;
+      throw err;
+    });
+  }
   return muniPathsPromise;
 }
 
 export function loadGeography100(): Promise<GeographyFeature[]> {
-  if (!geo100Promise) geo100Promise = fetchJson<GeographyFeature[]>('geography_100.json');
+  if (!geo100Promise) {
+    geo100Promise = fetchJson<GeographyFeature[]>('geography_100.json').catch((err) => {
+      geo100Promise = null;
+      throw err;
+    });
+  }
   return geo100Promise;
 }
 
@@ -209,9 +231,9 @@ function muniToPiece(
   const isIzu = isTokyoIzuCode(m.code);
   const isOga = isTokyoOgasawaraCode(m.code);
 
-  // Use Chichijima/Hahajima visual center/bbox inside Ogasawara inset (avoids Minami-Torishima 1140,1144 stretching bbox)
+  // Use Chichijima/Hahajima visual bbox and anchor label on Chichijima inside Ogasawara inset
   let baseBBox: BBox = isOga ? [640, 982, 652, 1036] : m.bbox;
-  let baseCenter: [number, number] = m.center;
+  let baseCenter: [number, number] = isOga ? [647.0, 991.5] : m.center;
 
   if (isOki && okiTransform) {
     baseBBox = transformBBox(baseBBox, okiTransform);

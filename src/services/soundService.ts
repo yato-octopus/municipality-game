@@ -9,23 +9,18 @@ function getAudioContext(): AudioContext | null {
   if (!audioCtx) {
     audioCtx = new Ctx();
   }
-  if (audioCtx.state === 'suspended') {
-    void audioCtx.resume().catch(() => {});
-  }
   return audioCtx;
 }
 
-function playTone(
+function scheduleTone(
+  ctx: AudioContext,
   freq: number,
   durationSec: number,
   volume01: number,
-  type: OscillatorType = 'sine',
-  delaySec = 0,
+  type: OscillatorType,
+  delaySec: number,
   endFreq?: number,
 ): void {
-  if (volume01 <= 0.005) return;
-  const ctx = getAudioContext();
-  if (!ctx) return;
   try {
     const start = ctx.currentTime + delaySec;
     const osc = ctx.createOscillator();
@@ -48,6 +43,29 @@ function playTone(
   }
 }
 
+function playTone(
+  freq: number,
+  durationSec: number,
+  volume01: number,
+  type: OscillatorType = 'sine',
+  delaySec = 0,
+  endFreq?: number,
+): void {
+  if (volume01 <= 0.005) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') {
+    void ctx
+      .resume()
+      .then(() => {
+        scheduleTone(ctx, freq, durationSec, volume01, type, delaySec, endFreq);
+      })
+      .catch(() => {});
+    return;
+  }
+  scheduleTone(ctx, freq, durationSec, volume01, type, delaySec, endFreq);
+}
+
 /** Bell-like piece snap chime */
 export function playSnapBell(seVolume: number, enabled: boolean): void {
   if (!enabled) return;
@@ -64,7 +82,8 @@ export function playCorrectChime(seVolume: number, enabled: boolean): void {
   playTone(880, 0.26, v, 'sine', 0.08);
 }
 
-export function playWrongBuzz(seVolume: number): void {
+export function playWrongBuzz(seVolume: number, enabled = true): void {
+  if (!enabled) return;
   const v = seVolume / 100;
   playTone(210, 0.16, v * 0.85, 'triangle', 0, 145);
 }
@@ -76,7 +95,8 @@ export function playCompleteFanfare(seVolume: number, enabled: boolean): void {
   notes.forEach((f, idx) => playTone(f, 0.32, v * 0.9, 'sine', idx * 0.075));
 }
 
-export function playUiClick(seVolume: number): void {
+export function playUiClick(seVolume: number, enabled = true): void {
+  if (!enabled) return;
   const v = seVolume / 100;
   playTone(720, 0.045, v * 0.35, 'sine', 0);
 }

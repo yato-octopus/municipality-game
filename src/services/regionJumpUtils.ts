@@ -1,15 +1,20 @@
 import type { BBox } from '../types/game';
 import { OKINAWA_INSET_BOX } from './mapDataLoader';
 
+/**
+ * Region jump bounding boxes covering each region's full prefecture `bboxMain`
+ * union with ~6-8% cartographic breathing room.
+ */
 const JAPAN_JUMP_BOXES: Record<string, BBox> = {
-  hokkaido: [520, 38, 935, 290],
-  tohoku: [500, 280, 625, 490],
-  kantou: [490, 505, 600, 635],
-  tyuubu: [390, 445, 530, 655],
-  kansai: [305, 575, 425, 705],
-  tyuugoku: [160, 585, 315, 678],
-  sikoku: [210, 665, 330, 748],
-  kyuusyuu: [65, 665, 220, 875],
+  japan: [22, 34, 940, 920],
+  hokkaido: [502, 26, 952, 300],
+  tohoku: [504, 256, 656, 548],
+  kantou: [478, 502, 600, 638],
+  tyuubu: [350, 424, 564, 658],
+  kansai: [304, 574, 438, 712],
+  tyuugoku: [156, 544, 336, 698],
+  sikoku: [210, 638, 348, 748],
+  kyuusyuu: [54, 624, 236, 1028],
   okinawa: OKINAWA_INSET_BOX,
 };
 

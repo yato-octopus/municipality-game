@@ -16,9 +16,11 @@ interface ResultOverlayProps {
   wrongPieces: MapPieceItem[];
   inspectingCompleted: boolean;
   onToggleInspectCompleted: () => void;
+  onInspectMissedPiece?: (piece: MapPieceItem) => void;
   onReviewMistakes?: () => void;
   onRetrySame: () => void;
   onRetryRandom?: () => void;
+  onGoAreas?: () => void;
   onGoTitle: () => void;
 }
 
@@ -36,17 +38,22 @@ export const ResultOverlay: React.FC<ResultOverlayProps> = ({
   wrongPieces,
   inspectingCompleted,
   onToggleInspectCompleted,
+  onInspectMissedPiece,
   onReviewMistakes,
   onRetrySame,
   onRetryRandom,
+  onGoAreas,
   onGoTitle,
 }) => {
   const [copied, setCopied] = useState(false);
 
   if (inspectingCompleted) {
     return (
-      <div className="inspect-complete-bar">
-        <span>完成図を閲覧中（左クリックドラッグ・ホイールズーム・タップで詳細確認できます）</span>
+      <div className="inspect-complete-bar" role="region" aria-label="完成図閲覧コントロール">
+        <span>
+          完成図を閲覧中（ドラッグ・ズーム・タップで詳細確認
+          {wrongPieces.length > 0 ? '／黄枠＝今回間違えた場所' : ''}）
+        </span>
         <button type="button" className="btn-primary" onClick={onToggleInspectCompleted}>
           リザルトへ戻る
         </button>
@@ -55,7 +62,10 @@ export const ResultOverlay: React.FC<ResultOverlayProps> = ({
   }
 
   const timeStr = formatTimeMs(elapsedMs);
-  const shareText = `${areaName} ${modeLabel} を ${timeStr} でクリア！ #市区町村パズル #市町村パズル`;
+  const cleanCount = Math.max(0, questionCount - wrongPieces.length);
+  const accuracyPct =
+    questionCount > 0 ? Math.round((cleanCount / questionCount) * 100) : 100;
+  const shareText = `${areaName} ${modeLabel} を ${timeStr}（初回正答率 ${accuracyPct}%）でクリア！ #市区町村パズル #市町村パズル`;
 
   const handleShare = async () => {
     if (navigator.share) {
@@ -75,7 +85,12 @@ export const ResultOverlay: React.FC<ResultOverlayProps> = ({
     }
   };
 
-  const starRating = misses === 0 && hintsUsed === 0 ? 3 : misses <= 3 ? 2 : 1;
+  const starRating =
+    misses === 0 && wrongPieces.length === 0 && hintsUsed === 0
+      ? 3
+      : misses <= 3 && wrongPieces.length <= 3
+        ? 2
+        : 1;
 
   return (
     <div className="modal-backdrop result-backdrop">
@@ -93,15 +108,20 @@ export const ResultOverlay: React.FC<ResultOverlayProps> = ({
         ))}
       </div>
 
-      <div className="modal-card result-card">
+      <div
+        className="modal-card result-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="result-modal-title"
+      >
         <div className="result-complete-badge">COMPLETE!</div>
         {isNewBest && <div className="result-new-record">★ NEW RECORD ★</div>}
 
-        <h2 className="result-title">
+        <h2 id="result-modal-title" className="result-title">
           {areaName} — {modeLabel}
         </h2>
 
-        <div className="result-stars" aria-label={`評価 ${starRating}`}>
+        <div className="result-stars" aria-label={`評価 ${starRating} / 3`}>
           {[1, 2, 3].map((n) => (
             <span key={n} className={n <= starRating ? 'star-on' : 'star-off'}>
               ★
@@ -115,14 +135,14 @@ export const ResultOverlay: React.FC<ResultOverlayProps> = ({
             <strong>{timeStr}</strong>
           </div>
           <div className="result-stat-box">
-            <span>ミス回数</span>
-            <strong>{misses} 回</strong>
+            <span>初回正答率</span>
+            <strong>
+              {accuracyPct}% ({cleanCount}/{questionCount})
+            </strong>
           </div>
           <div className="result-stat-box">
-            <span>問題数</span>
-            <strong>
-              {questionCount} / {maxCount}
-            </strong>
+            <span>ミス回数</span>
+            <strong>{misses} 回</strong>
           </div>
           <div className="result-stat-box">
             <span>ヒント使用</span>
@@ -133,17 +153,28 @@ export const ResultOverlay: React.FC<ResultOverlayProps> = ({
         {wrongPieces.length > 0 && (
           <div className="result-mistakes-box">
             <div className="result-mistakes-header">
-              今回間違えた問題（{wrongPieces.length}件・復習リストに保存済み）
+              今回間違えた問題（{wrongPieces.length}件・タップで地図上の場所を確認）
             </div>
-            <div className="result-mistakes-chips">
-              {wrongPieces.slice(0, 12).map((p) => (
-                <span key={p.id} className="result-mistake-chip">
-                  {p.answerKanji ?? p.name}
-                </span>
-              ))}
-              {wrongPieces.length > 12 && (
-                <span className="result-mistake-chip muted">ほか{wrongPieces.length - 12}件</span>
-              )}
+            <div className="result-missed-scroll">
+              {wrongPieces.map((p) => {
+                const kanji = p.answerKanji ?? p.name;
+                const ruby = p.answerRuby ?? p.ruby;
+                const prefSuffix =
+                  p.prefName && p.prefName !== kanji ? `・${p.prefName}` : '';
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className="result-missed-item"
+                    title={`${kanji}の場所を地図で確認`}
+                    onClick={() => onInspectMissedPiece?.(p)}
+                  >
+                    <strong>{kanji}</strong>
+                    {ruby && <span>（{ruby}）</span>}
+                    {prefSuffix && <span>{prefSuffix}</span>}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -184,6 +215,11 @@ export const ResultOverlay: React.FC<ResultOverlayProps> = ({
           ) : (
             <button type="button" className="btn-primary" onClick={onRetrySame}>
               ↻ リトライ
+            </button>
+          )}
+          {onGoAreas && (
+            <button type="button" className="btn-secondary" onClick={onGoAreas}>
+              🗺 エリア選択へ戻る
             </button>
           )}
           <button type="button" className="btn-ghost" onClick={onGoTitle}>

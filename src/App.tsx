@@ -35,13 +35,24 @@ import type {
   MapTag,
   MistakeEntry,
   ModeBestRecord,
+  MunicipalityMeta,
   SavedProgress,
 } from './types/game';
 
 type AppView =
   | { kind: 'title'; screen: 'title' | 'areas' }
-  | { kind: 'play'; spec: GameSessionSpec; restored: SavedProgress | null }
-  | { kind: 'view'; areaId: string };
+  | {
+      kind: 'play';
+      spec: GameSessionSpec;
+      restored: SavedProgress | null;
+      returnTo: 'title' | 'areas';
+    }
+  | {
+      kind: 'view';
+      areaId: string;
+      focusPieceId?: string | null;
+      returnTo: 'title' | 'areas';
+    };
 
 function inferCategoryFromSpec(spec: GameSessionSpec): AreaCategory | null {
   if (spec.areaId === '00_japan') return 'japan';
@@ -53,10 +64,12 @@ function inferCategoryFromSpec(spec: GameSessionSpec): AreaCategory | null {
 
 export function App() {
   const [prefsData, setPrefsData] = useState<JapanPrefsData | null>(null);
+  const [muniList, setMuniList] = useState<MunicipalityMeta[]>([]);
   const [totalMunis, setTotalMunis] = useState(1747);
   const [totalCities, setTotalCities] = useState(792);
   const [cityCountByPref, setCityCountByPref] = useState<Record<string, number>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   const [config, setConfig] = useState<ConfigState>(() => loadConfig());
   const [records, setRecords] = useState<Record<string, ModeBestRecord>>(() =>
@@ -71,6 +84,11 @@ export function App() {
 
   const [view, setView] = useState<AppView>({ kind: 'title', screen: 'title' });
   const [lastCategoryTab, setLastCategoryTab] = useState<AreaCategory>('japan');
+
+  // Mirror quality setting to <html> as well as .app-root for CSS selectors
+  useEffect(() => {
+    document.documentElement.dataset.quality = config.quality;
+  }, [config.quality]);
 
   // Prevent browser page zoom when pinching on UI overlays (map SVG still handles its own zoom)
   useEffect(() => {
@@ -103,9 +121,13 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    let active = true;
     void Promise.all([loadJapanPrefs(), loadMuniIndex()])
       .then(([jp, munis]) => {
+        if (!active) return;
+        setLoadError(null);
         setPrefsData(jp);
+        setMuniList(munis);
         setTotalMunis(munis.length);
         const cityCounts: Record<string, number> = {};
         let cityTotal = 0;
@@ -119,16 +141,39 @@ export function App() {
         setCityCountByPref(cityCounts);
       })
       .catch((err: unknown) => {
+        if (!active) return;
         setLoadError(
           err instanceof Error ? err.message : '地図データの読み込みに失敗しました',
         );
       });
-  }, []);
+    return () => {
+      active = false;
+    };
+  }, [retryNonce]);
 
   const areas = useMemo(() => {
     if (!prefsData) return [];
     return buildAreaCatalog(prefsData.prefs, totalMunis, totalCities);
   }, [prefsData, totalMunis, totalCities]);
+
+  const allKnownPieces = useMemo(() => {
+    const map = new Map<string, { name: string; ruby: string; prefName?: string }>();
+    const prefNameByCode = new Map<string, string>();
+    if (prefsData) {
+      for (const p of prefsData.prefs) {
+        prefNameByCode.set(p.code, p.name);
+        map.set(`pref_${p.code}`, { name: p.name, ruby: p.ruby, prefName: p.name });
+      }
+    }
+    for (const m of muniList) {
+      map.set(m.code, {
+        name: m.name,
+        ruby: m.ruby,
+        prefName: prefNameByCode.get(m.prefCode),
+      });
+    }
+    return map;
+  }, [prefsData, muniList]);
 
   const handleConfigChange = useCallback((next: ConfigState) => {
     setConfig(next);
@@ -156,6 +201,7 @@ export function App() {
       questionCount: number,
       maxCount: number,
       isCustomOrRandom: boolean,
+      hintsUsed = 0,
     ) => {
       const res = recordModeClear(
         modeId,
@@ -164,6 +210,7 @@ export function App() {
         questionCount,
         maxCount,
         isCustomOrRandom,
+        hintsUsed,
       );
       setRecords(loadAllRecords());
       return { isNewBest: res.isNewBest };
@@ -254,21 +301,29 @@ export function App() {
     });
   }, []);
 
+  let content: React.ReactNode;
+
   if (loadError) {
-    return (
+    content = (
       <div className="app-fatal-error">
         <h2>読み込みエラー</h2>
         <p>{loadError}</p>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={() => {
+            setLoadError(null);
+            setRetryNonce((n) => n + 1);
+          }}
+        >
+          ↻ 再試行
+        </button>
       </div>
     );
-  }
-
-  if (!prefsData) {
-    return <div className="map-loading-state">全国地図データを準備中...</div>;
-  }
-
-  if (view.kind === 'play') {
-    return (
+  } else if (!prefsData) {
+    content = <div className="map-loading-state">全国地図データを準備中...</div>;
+  } else if (view.kind === 'play') {
+    content = (
       <GameSessionShell
         key={view.spec.sessionId}
         spec={view.spec}
@@ -281,7 +336,7 @@ export function App() {
         onUpsertManualSave={handleUpsertManual}
         onDeleteManualSave={handleDeleteManual}
         onLoadManualSave={(s) =>
-          setView({ kind: 'play', spec: s.spec, restored: s })
+          setView({ kind: 'play', spec: s.spec, restored: s, returnTo: view.returnTo })
         }
         onRecordClear={handleRecordClear}
         onRecordMistake={handleRecordMistake}
@@ -293,23 +348,25 @@ export function App() {
         onToggleLockTag={handleToggleLockTag}
         onDeleteTag={handleDeleteTag}
         onRestartSession={(nextSpec) =>
-          setView({ kind: 'play', spec: nextSpec, restored: null })
+          setView({ kind: 'play', spec: nextSpec, restored: null, returnTo: view.returnTo })
         }
         onExitToAreas={() => {
           const inferred = inferCategoryFromSpec(view.spec);
           if (inferred) setLastCategoryTab(inferred);
-          setView({ kind: 'title', screen: 'areas' });
+          setView({ kind: 'title', screen: view.returnTo });
         }}
         onExitToTitle={() => setView({ kind: 'title', screen: 'title' })}
       />
     );
-  }
-
-  if (view.kind === 'view') {
-    return (
+  } else if (view.kind === 'view') {
+    content = (
       <ViewModeScreen
         initialAreaId={view.areaId}
+        initialFocusPieceId={view.focusPieceId}
+        returnLabel={view.returnTo === 'areas' ? '← エリア選択' : '← タイトル'}
         areas={areas}
+        prefsData={prefsData}
+        allKnownPieces={allKnownPieces}
         config={config}
         tags={tags}
         onConfigChange={handleConfigChange}
@@ -318,38 +375,66 @@ export function App() {
         onRenameTag={handleRenameTag}
         onToggleLockTag={handleToggleLockTag}
         onDeleteTag={handleDeleteTag}
-        onGoTitle={() => setView({ kind: 'title', screen: 'title' })}
+        onStartGame={(spec) => {
+          const inferred = inferCategoryFromSpec(spec);
+          if (inferred) setLastCategoryTab(inferred);
+          setView({ kind: 'play', spec, restored: null, returnTo: view.returnTo });
+        }}
+        onGoTitle={() => setView({ kind: 'title', screen: view.returnTo })}
+      />
+    );
+  } else {
+    content = (
+      <TitleScreen
+        initialScreenMode={view.screen}
+        initialCategoryTab={lastCategoryTab}
+        onCategoryTabChange={setLastCategoryTab}
+        areas={areas}
+        prefsData={prefsData}
+        totalMunis={totalMunis}
+        totalCities={totalCities}
+        cityCountByPref={cityCountByPref}
+        config={config}
+        records={records}
+        autoSave={autoSave}
+        manualSaves={manualSaves}
+        mistakes={mistakes}
+        onConfigChange={handleConfigChange}
+        onStartGame={(spec, restore, callerScreen) => {
+          const inferred = inferCategoryFromSpec(spec);
+          if (inferred) setLastCategoryTab(inferred);
+          setView({
+            kind: 'play',
+            spec,
+            restored: restore ?? null,
+            returnTo: callerScreen ?? (view.screen === 'areas' ? 'areas' : 'title'),
+          });
+        }}
+        onStartView={(areaId, options) =>
+          setView({
+            kind: 'view',
+            areaId,
+            focusPieceId: options?.focusPieceId ?? null,
+            returnTo: options?.returnTo ?? 'title',
+          })
+        }
+        onClearAutoSave={() => handleSaveAuto(null)}
+        onDeleteManualSave={handleDeleteManual}
+        onDeleteMistakeEntry={handleDeleteMistakeEntry}
+        onClearModeMistakes={handleClearModeMistakes}
+        onClearAllMistakes={handleClearAllMistakes}
       />
     );
   }
 
   return (
-    <TitleScreen
-      initialScreenMode={view.screen}
-      initialCategoryTab={lastCategoryTab}
-      onCategoryTabChange={setLastCategoryTab}
-      areas={areas}
-      prefsData={prefsData}
-      totalMunis={totalMunis}
-      totalCities={totalCities}
-      cityCountByPref={cityCountByPref}
-      config={config}
-      records={records}
-      autoSave={autoSave}
-      manualSaves={manualSaves}
-      mistakes={mistakes}
-      onConfigChange={handleConfigChange}
-      onStartGame={(spec, restore) => {
-        const inferred = inferCategoryFromSpec(spec);
-        if (inferred) setLastCategoryTab(inferred);
-        setView({ kind: 'play', spec, restored: restore ?? null });
-      }}
-      onStartView={(areaId) => setView({ kind: 'view', areaId })}
-      onDeleteManualSave={handleDeleteManual}
-      onDeleteMistakeEntry={handleDeleteMistakeEntry}
-      onClearModeMistakes={handleClearModeMistakes}
-      onClearAllMistakes={handleClearAllMistakes}
-    />
+    <div
+      className="app-root"
+      data-quality={config.quality}
+      style={{ width: '100%', height: '100%' }}
+    >
+      {content}
+    </div>
   );
 }
 

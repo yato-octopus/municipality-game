@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { shuffleArray } from '../services/mapDataLoader';
 import type { MapPieceItem, QuizChoiceLayout } from '../types/game';
 
@@ -18,11 +19,16 @@ interface QuizGameProps {
   quizChoiceLayout: QuizChoiceLayout;
   nameOnFix: boolean;
   hasJumpBar: boolean;
+  modalOpen?: boolean;
+  mapStageEl?: HTMLDivElement | null;
   svgToContainerPoint: (sx: number, sy: number) => SvgContainerPoint | null;
   getSvgRect: () => DOMRect | null;
   subscribeLiveViewBox: (listener: () => void) => () => void;
   onFocusPiece: (piece: MapPieceItem) => void;
   onUseHint: () => void;
+  onHintEliminatedAll?: () => void;
+  onGiveUp?: () => void;
+  onAdvanceAfterGiveUp?: () => void;
   onToggleQuizChoiceLayout: () => void;
   onToggleNameOnFix: () => void;
   onAnswerResult: (correct: boolean) => void;
@@ -30,12 +36,14 @@ interface QuizGameProps {
 
 interface PointingCardPos {
   choice: MapPieceItem;
+  choiceIdx: number;
   x: number;
   y: number;
   width: number;
   height: number;
   attachX: number;
   attachY: number;
+  isMultiline: boolean;
 }
 
 interface PointingLayout {
@@ -82,8 +90,13 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
+interface IndexedChoice {
+  choice: MapPieceItem;
+  choiceIdx: number;
+}
+
 function placeColumnCards(
-  items: MapPieceItem[],
+  items: IndexedChoice[],
   x: number,
   centerY: number,
   cardW: number,
@@ -91,12 +104,13 @@ function placeColumnCards(
   gapY: number,
   safeTop: number,
   safeBottom: number,
-): { choice: MapPieceItem; x: number; y: number; width: number; height: number }[] {
+): { choice: MapPieceItem; choiceIdx: number; x: number; y: number; width: number; height: number }[] {
   if (items.length === 0) return [];
   const stackH = items.length * cardH + (items.length - 1) * gapY;
   const startY = clamp(centerY - stackH / 2, safeTop, safeBottom - stackH);
-  return items.map((choice, idx) => ({
-    choice,
+  return items.map((item, idx) => ({
+    choice: item.choice,
+    choiceIdx: item.choiceIdx,
     x,
     y: startY + idx * (cardH + gapY),
     width: cardW,
@@ -105,7 +119,7 @@ function placeColumnCards(
 }
 
 function placeRowCards(
-  items: MapPieceItem[],
+  items: IndexedChoice[],
   centerX: number,
   y: number,
   cardW: number,
@@ -113,12 +127,13 @@ function placeRowCards(
   gapX: number,
   safeLeft: number,
   safeRight: number,
-): { choice: MapPieceItem; x: number; y: number; width: number; height: number }[] {
+): { choice: MapPieceItem; choiceIdx: number; x: number; y: number; width: number; height: number }[] {
   if (items.length === 0) return [];
   const rowW = items.length * cardW + (items.length - 1) * gapX;
   const startX = clamp(centerX - rowW / 2, safeLeft, safeRight - rowW);
-  return items.map((choice, idx) => ({
-    choice,
+  return items.map((item, idx) => ({
+    choice: item.choice,
+    choiceIdx: item.choiceIdx,
     x: startX + idx * (cardW + gapX),
     y,
     width: cardW,
@@ -126,7 +141,18 @@ function placeRowCards(
   }));
 }
 
-export const QuizGame: React.FC<QuizGameProps> = ({
+function isEditableEventTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return (
+    tag === 'INPUT' ||
+    tag === 'TEXTAREA' ||
+    tag === 'SELECT' ||
+    target.isContentEditable
+  );
+}
+
+const QuizGameInner: React.FC<QuizGameProps> = ({
   activePiece,
   allPoolPieces,
   isGeographyQuiz,
@@ -134,11 +160,16 @@ export const QuizGame: React.FC<QuizGameProps> = ({
   quizChoiceLayout,
   nameOnFix,
   hasJumpBar,
+  modalOpen = false,
+  mapStageEl = null,
   svgToContainerPoint,
   getSvgRect,
   subscribeLiveViewBox,
   onFocusPiece,
   onUseHint,
+  onHintEliminatedAll,
+  onGiveUp,
+  onAdvanceAfterGiveUp,
   onToggleQuizChoiceLayout,
   onToggleNameOnFix,
   onAnswerResult,
@@ -146,10 +177,27 @@ export const QuizGame: React.FC<QuizGameProps> = ({
   const [disabledChoiceIds, setDisabledChoiceIds] = useState<Set<string>>(new Set());
   const [hintEliminatedIds, setHintEliminatedIds] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState<'ok' | 'ng' | null>(null);
+  const [missNonce, setMissNonce] = useState(0);
+  const [revealed, setRevealed] = useState(false);
+  const [hoveredChoiceId, setHoveredChoiceId] = useState<string | null>(null);
   const [pointingLayout, setPointingLayout] = useState<PointingLayout | null>(null);
+  const [prevChoiceLayout, setPrevChoiceLayout] = useState<QuizChoiceLayout>(quizChoiceLayout);
   const layerRef = useRef<HTMLDivElement | null>(null);
+  const ngClearTimerRef = useRef<number | null>(null);
 
-  // Build 6 unique-label choices (Ver 3.5.3 duplicate kanji protection)
+  // Clear any stale pointing coordinates immediately when switching layout modes
+  if (prevChoiceLayout !== quizChoiceLayout) {
+    setPrevChoiceLayout(quizChoiceLayout);
+    setPointingLayout(null);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (ngClearTimerRef.current != null) window.clearTimeout(ngClearTimerRef.current);
+    };
+  }, []);
+
+  // Build 6 unique-label choices (duplicate kanji protection)
   const choices = useMemo(() => {
     const answerLabel = activePiece.answerKanji ?? activePiece.name;
     const seenLabels = new Set<string>([answerLabel]);
@@ -178,8 +226,8 @@ export const QuizGame: React.FC<QuizGameProps> = ({
     [choices, activePiece.id, disabledChoiceIds, hintEliminatedIds],
   );
 
-  const handleUseHint = () => {
-    if (feedback === 'ok' || remainingWrongChoices.length === 0) return;
+  const handleUseHint = useCallback(() => {
+    if (feedback === 'ok' || revealed || remainingWrongChoices.length === 0) return;
     const sorted = [...remainingWrongChoices].sort(
       (a, b) =>
         hashString(`${activePiece.id}:${a.id}`) - hashString(`${activePiece.id}:${b.id}`),
@@ -193,7 +241,127 @@ export const QuizGame: React.FC<QuizGameProps> = ({
       return next;
     });
     onUseHint();
-  };
+    if (remainingWrongChoices.length - toEliminate.length <= 0) {
+      onHintEliminatedAll?.();
+    }
+  }, [
+    feedback,
+    revealed,
+    remainingWrongChoices,
+    activePiece.id,
+    onUseHint,
+    onHintEliminatedAll,
+  ]);
+
+  const handleGiveUp = useCallback(() => {
+    if (feedback === 'ok' || revealed) return;
+    setRevealed(true);
+    setFeedback(null);
+    if (ngClearTimerRef.current != null) {
+      window.clearTimeout(ngClearTimerRef.current);
+      ngClearTimerRef.current = null;
+    }
+    onGiveUp?.();
+  }, [feedback, revealed, onGiveUp]);
+
+  const handleChoose = useCallback(
+    (opt: MapPieceItem) => {
+      if (revealed) {
+        if (opt.id === activePiece.id) {
+          onAdvanceAfterGiveUp?.();
+        }
+        return;
+      }
+      if (
+        disabledChoiceIds.has(opt.id) ||
+        hintEliminatedIds.has(opt.id) ||
+        feedback === 'ok'
+      ) {
+        return;
+      }
+      if (opt.id === activePiece.id) {
+        if (ngClearTimerRef.current != null) {
+          window.clearTimeout(ngClearTimerRef.current);
+          ngClearTimerRef.current = null;
+        }
+        setFeedback('ok');
+        onAnswerResult(true);
+      } else {
+        setFeedback('ng');
+        setMissNonce((n) => n + 1);
+        setDisabledChoiceIds((prev) => new Set(prev).add(opt.id));
+        onAnswerResult(false);
+        if (ngClearTimerRef.current != null) window.clearTimeout(ngClearTimerRef.current);
+        ngClearTimerRef.current = window.setTimeout(() => {
+          setFeedback((cur) => (cur === 'ng' ? null : cur));
+          ngClearTimerRef.current = null;
+        }, 900);
+      }
+    },
+    [
+      revealed,
+      activePiece.id,
+      onAdvanceAfterGiveUp,
+      disabledChoiceIds,
+      hintEliminatedIds,
+      feedback,
+      onAnswerResult,
+    ],
+  );
+
+  // Keyboard shortcuts: 1-6 select choice, H hint, F focus, L toggle layout, Enter/Space advance on reveal
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (
+        modalOpen ||
+        e.isComposing ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.altKey ||
+        isEditableEventTarget(e.target)
+      ) {
+        return;
+      }
+      if (revealed && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        onAdvanceAfterGiveUp?.();
+        return;
+      }
+      if (e.key >= '1' && e.key <= '6') {
+        const idx = Number(e.key) - 1;
+        const opt = choices[idx];
+        if (opt) {
+          e.preventDefault();
+          handleChoose(opt);
+        }
+        return;
+      }
+      const lower = e.key.toLowerCase();
+      if (lower === 'h' && !disableHelpButton) {
+        e.preventDefault();
+        handleUseHint();
+      } else if (lower === 'f') {
+        e.preventDefault();
+        onFocusPiece(activePiece);
+      } else if (lower === 'l') {
+        e.preventDefault();
+        onToggleQuizChoiceLayout();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [
+    modalOpen,
+    revealed,
+    choices,
+    disableHelpButton,
+    activePiece,
+    handleChoose,
+    handleUseHint,
+    onAdvanceAfterGiveUp,
+    onFocusPiece,
+    onToggleQuizChoiceLayout,
+  ]);
 
   const computePointingLayout = useCallback((): PointingLayout | null => {
     const layerEl = layerRef.current;
@@ -217,28 +385,28 @@ export const QuizGame: React.FC<QuizGameProps> = ({
     const anchorX = anchorPt.x + offsetX;
     const anchorY = anchorPt.y + offsetY;
 
-    const targetHalfW = Math.min(130, Math.max(12, Math.abs(brPt.x - tlPt.x) / 2));
-    const targetHalfH = Math.min(110, Math.max(12, Math.abs(brPt.y - tlPt.y) / 2));
+    const targetHalfW = Math.min(126, Math.max(14, Math.abs(brPt.x - tlPt.x) / 2));
+    const targetHalfH = Math.min(106, Math.max(14, Math.abs(brPt.y - tlPt.y) / 2));
 
-    const hasGeoDesc = Boolean(isGeographyQuiz && activePiece.desc);
-    const safeLeft = 70;
-    const safeRight = Math.max(safeLeft + 150, containerW - 14);
-    const safeTop = Math.max(68, Math.round(offsetY + (hasJumpBar ? 42 : 12)));
+    const isNarrow = containerW < 560;
+    const safeLeft = isNarrow ? 54 : 68;
+    const safeRight = Math.max(safeLeft + 150, containerW - 12);
+    const safeTop = Math.max(
+      hasJumpBar ? (isNarrow ? 44 : 48) : 10,
+      Math.round(offsetY + (hasJumpBar ? 44 : 10)),
+    );
     const svgBottomInLayer = svgRect.bottom - layerRect.top;
     const safeBottom = Math.max(
-      safeTop + 150,
-      Math.min(
-        Math.round(svgBottomInLayer - 10),
-        Math.round(containerH - (hasGeoDesc ? 132 : 84)),
-      ),
+      safeTop + 140,
+      Math.min(Math.round(svgBottomInLayer - 10), Math.round(containerH - 10)),
     );
 
     const safeW = safeRight - safeLeft;
     const safeH = safeBottom - safeTop;
-    const cardW = safeW < 370 ? Math.max(114, Math.floor((safeW - 20) / 2)) : 148;
-    const cardH = 44;
+    const cardW = safeW < 390 ? Math.max(108, Math.floor((safeW - 16) / 2)) : 154;
+    const cardH = isNarrow ? 48 : 46;
     const gapY = 8;
-    const gapX = 10;
+    const gapX = 8;
 
     const clampedAnchorX = clamp(anchorX, safeLeft + 10, safeRight - 10);
     const clampedAnchorY = clamp(anchorY, safeTop + 10, safeBottom - 10);
@@ -257,18 +425,29 @@ export const QuizGame: React.FC<QuizGameProps> = ({
     const lineTargetX = anchorVisible ? anchorX : clamp(anchorX, svgVisLeft, svgVisRight);
     const lineTargetY = anchorVisible ? anchorY : clamp(anchorY, svgVisTop, svgVisBottom);
 
-    const horizOffset = Math.max(46, targetHalfW + 24);
+    const horizOffset = Math.max(38, targetHalfW + 20);
     const idealLeftX = clampedAnchorX - horizOffset - cardW;
     const idealRightX = clampedAnchorX + horizOffset;
     const canPlaceLeft = idealLeftX >= safeLeft;
     const canPlaceRight = idealRightX + cardW <= safeRight;
 
-    const n = choices.length;
+    const indexed: IndexedChoice[] = choices.map((choice, choiceIdx) => ({
+      choice,
+      choiceIdx,
+    }));
+    const n = indexed.length;
     const leftCount = Math.ceil(n / 2);
-    const leftSlice = choices.slice(0, leftCount);
-    const rightSlice = choices.slice(leftCount);
+    const leftSlice = indexed.slice(0, leftCount);
+    const rightSlice = indexed.slice(leftCount);
 
-    let rawCards: { choice: MapPieceItem; x: number; y: number; width: number; height: number }[];
+    let rawCards: {
+      choice: MapPieceItem;
+      choiceIdx: number;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }[];
 
     if (canPlaceLeft && canPlaceRight) {
       rawCards = [
@@ -297,7 +476,7 @@ export const QuizGame: React.FC<QuizGameProps> = ({
       const allStackH = n * cardH + Math.max(0, n - 1) * gapY;
       if (allStackH <= safeH) {
         rawCards = placeColumnCards(
-          choices,
+          indexed,
           Math.min(safeRight - cardW, idealRightX),
           clampedAnchorY,
           cardW,
@@ -330,14 +509,13 @@ export const QuizGame: React.FC<QuizGameProps> = ({
           ),
         ];
       } else {
-        // Right column + above/below fan so nothing overlaps target or clips viewport
         const rightColX = Math.min(safeRight - cardW, idealRightX);
-        const roomAbove = clampedAnchorY - targetHalfH - 18 - safeTop;
-        const roomBelow = safeBottom - (clampedAnchorY + targetHalfH + 18);
+        const roomAbove = clampedAnchorY - targetHalfH - 16 - safeTop;
+        const roomBelow = safeBottom - (clampedAnchorY + targetHalfH + 16);
         const fanY =
           roomAbove >= roomBelow
-            ? clamp(clampedAnchorY - targetHalfH - 18 - cardH, safeTop, safeBottom - cardH)
-            : clamp(clampedAnchorY + targetHalfH + 18, safeTop, safeBottom - cardH);
+            ? clamp(clampedAnchorY - targetHalfH - 16 - cardH, safeTop, safeBottom - cardH)
+            : clamp(clampedAnchorY + targetHalfH + 16, safeTop, safeBottom - cardH);
         const fanMaxRight = Math.max(safeLeft + cardW, rightColX - gapX);
         rawCards = [
           ...placeColumnCards(
@@ -354,7 +532,15 @@ export const QuizGame: React.FC<QuizGameProps> = ({
             leftSlice,
             clampedAnchorX,
             fanY,
-            Math.min(cardW, Math.max(96, Math.floor((fanMaxRight - safeLeft - gapX * 2) / Math.max(1, leftSlice.length)))),
+            Math.min(
+              cardW,
+              Math.max(
+                94,
+                Math.floor(
+                  (fanMaxRight - safeLeft - gapX * 2) / Math.max(1, leftSlice.length),
+                ),
+              ),
+            ),
             cardH,
             gapX,
             safeLeft,
@@ -366,7 +552,7 @@ export const QuizGame: React.FC<QuizGameProps> = ({
       const allStackH = n * cardH + Math.max(0, n - 1) * gapY;
       if (allStackH <= safeH) {
         rawCards = placeColumnCards(
-          choices,
+          indexed,
           Math.max(safeLeft, idealLeftX),
           clampedAnchorY,
           cardW,
@@ -400,12 +586,12 @@ export const QuizGame: React.FC<QuizGameProps> = ({
         ];
       } else {
         const leftColX = Math.max(safeLeft, idealLeftX);
-        const roomAbove = clampedAnchorY - targetHalfH - 18 - safeTop;
-        const roomBelow = safeBottom - (clampedAnchorY + targetHalfH + 18);
+        const roomAbove = clampedAnchorY - targetHalfH - 16 - safeTop;
+        const roomBelow = safeBottom - (clampedAnchorY + targetHalfH + 16);
         const fanY =
           roomAbove >= roomBelow
-            ? clamp(clampedAnchorY - targetHalfH - 18 - cardH, safeTop, safeBottom - cardH)
-            : clamp(clampedAnchorY + targetHalfH + 18, safeTop, safeBottom - cardH);
+            ? clamp(clampedAnchorY - targetHalfH - 16 - cardH, safeTop, safeBottom - cardH)
+            : clamp(clampedAnchorY + targetHalfH + 16, safeTop, safeBottom - cardH);
         const fanMinLeft = Math.min(safeRight - cardW, leftColX + cardW + gapX);
         rawCards = [
           ...placeColumnCards(
@@ -422,7 +608,15 @@ export const QuizGame: React.FC<QuizGameProps> = ({
             rightSlice,
             clampedAnchorX,
             fanY,
-            Math.min(cardW, Math.max(96, Math.floor((safeRight - fanMinLeft - gapX * 2) / Math.max(1, rightSlice.length)))),
+            Math.min(
+              cardW,
+              Math.max(
+                94,
+                Math.floor(
+                  (safeRight - fanMinLeft - gapX * 2) / Math.max(1, rightSlice.length),
+                ),
+              ),
+            ),
             cardH,
             gapX,
             fanMinLeft,
@@ -431,10 +625,16 @@ export const QuizGame: React.FC<QuizGameProps> = ({
         ];
       }
     } else {
-      // Narrow screen or wide target: place at left & right safe edges if non-overlapping, else top/bottom rows
+      // Only place left/right edge columns if they truly clear the target shape;
+      // otherwise place 3+3 rows above and below the target so cards NEVER cover it!
       const leftEdgeX = safeLeft;
       const rightEdgeX = safeRight - cardW;
-      if (leftEdgeX + cardW + gapX <= rightEdgeX) {
+      const edgesClearTarget =
+        leftEdgeX + cardW + 8 <= clampedAnchorX - targetHalfW &&
+        rightEdgeX - 8 >= clampedAnchorX + targetHalfW &&
+        leftEdgeX + cardW + gapX <= rightEdgeX;
+
+      if (edgesClearTarget) {
         rawCards = [
           ...placeColumnCards(
             leftSlice,
@@ -458,27 +658,66 @@ export const QuizGame: React.FC<QuizGameProps> = ({
           ),
         ];
       } else {
-        const compactW = Math.max(
+        const perRow = Math.max(1, leftSlice.length);
+        const rowCardW = Math.max(
           92,
-          Math.min(cardW, Math.floor((safeW - gapX * 2) / Math.max(1, leftSlice.length))),
+          Math.min(150, Math.floor((safeW - gapX * (perRow - 1)) / perRow)),
         );
+        const rowCardH = rowCardW < 126 ? 50 : cardH;
+        const centerX = (safeLeft + safeRight) / 2;
+        const roomAbove = clampedAnchorY - targetHalfH - 14 - safeTop;
+        const roomBelow = safeBottom - (clampedAnchorY + targetHalfH + 14);
+        const twoRowsH = rowCardH * 2 + gapY;
+
+        let topRowY: number;
+        let bottomRowY: number;
+        if (roomAbove >= rowCardH && roomBelow >= rowCardH) {
+          topRowY = clamp(
+            clampedAnchorY - targetHalfH - 16 - rowCardH,
+            safeTop,
+            safeBottom - rowCardH,
+          );
+          bottomRowY = clamp(
+            clampedAnchorY + targetHalfH + 16,
+            safeTop,
+            safeBottom - rowCardH,
+          );
+        } else if (roomAbove >= roomBelow && roomAbove >= twoRowsH) {
+          bottomRowY = clamp(
+            clampedAnchorY - targetHalfH - 14 - rowCardH,
+            safeTop + rowCardH + gapY,
+            safeBottom - rowCardH,
+          );
+          topRowY = Math.max(safeTop, bottomRowY - rowCardH - gapY);
+        } else if (roomBelow >= twoRowsH) {
+          topRowY = clamp(
+            clampedAnchorY + targetHalfH + 14,
+            safeTop,
+            safeBottom - twoRowsH,
+          );
+          bottomRowY = Math.min(safeBottom - rowCardH, topRowY + rowCardH + gapY);
+        } else {
+          topRowY = safeTop;
+          bottomRowY = safeBottom - rowCardH;
+        }
+
         rawCards = [
           ...placeRowCards(
             leftSlice,
-            (safeLeft + safeRight) / 2,
-            safeTop,
-            compactW,
-            cardH,
+            centerX,
+            topRowY,
+            rowCardW,
+            rowCardH,
             gapX,
             safeLeft,
             safeRight,
           ),
           ...placeRowCards(
             rightSlice,
-            (safeLeft + safeRight) / 2,
-            safeBottom - cardH,
-            compactW,
-            cardH,
+            centerX,
+            bottomRowY,
+            rowCardW,
+            rowCardH,
             gapX,
             safeLeft,
             safeRight,
@@ -543,10 +782,12 @@ export const QuizGame: React.FC<QuizGameProps> = ({
         attachX = c.x + c.width / 2;
         attachY = c.y;
       }
+      const kanji = c.choice.answerKanji ?? c.choice.name;
       return {
         ...c,
         attachX,
         attachY,
+        isMultiline: c.width < 138 || kanji.length >= 6,
       };
     });
 
@@ -560,7 +801,7 @@ export const QuizGame: React.FC<QuizGameProps> = ({
       lineTargetY,
       cards,
     };
-  }, [activePiece, choices, getSvgRect, hasJumpBar, isGeographyQuiz, svgToContainerPoint]);
+  }, [activePiece, choices, getSvgRect, hasJumpBar, svgToContainerPoint]);
 
   useEffect(() => {
     if (quizChoiceLayout !== 'pointing') return;
@@ -589,49 +830,51 @@ export const QuizGame: React.FC<QuizGameProps> = ({
       ro?.disconnect();
       if (rafId != null) cancelAnimationFrame(rafId);
     };
-  }, [quizChoiceLayout, computePointingLayout, subscribeLiveViewBox]);
+  }, [quizChoiceLayout, computePointingLayout, subscribeLiveViewBox, mapStageEl]);
 
-  const handleChoose = (opt: MapPieceItem) => {
-    if (
-      disabledChoiceIds.has(opt.id) ||
-      hintEliminatedIds.has(opt.id) ||
-      feedback === 'ok'
-    ) {
-      return;
-    }
-    if (opt.id === activePiece.id) {
-      setFeedback('ok');
-      onAnswerResult(true);
-    } else {
-      setFeedback('ng');
-      setDisabledChoiceIds((prev) => new Set(prev).add(opt.id));
-      onAnswerResult(false);
-    }
-  };
+  const answerKanji = activePiece.answerKanji ?? activePiece.name;
+  const answerRuby = activePiece.answerRuby ?? activePiece.ruby;
+  const answerPrefSuffix =
+    activePiece.prefName && activePiece.prefName !== answerKanji
+      ? `（${activePiece.prefName}）`
+      : '';
 
   const renderActionButtons = () => (
     <div className="quiz-prompt-actions">
       <button
         type="button"
         className="btn-secondary btn-xs"
+        title="問題の場所へ移動 (F)"
         onClick={() => onFocusPiece(activePiece)}
       >
-        📍 場所へフォーカス
+        📍 フォーカス
       </button>
       {!disableHelpButton && (
-        <button
-          type="button"
-          className="btn-hint1 btn-xs"
-          title="誤答の選択肢を2つ減らします"
-          disabled={feedback === 'ok' || remainingWrongChoices.length === 0}
-          onClick={handleUseHint}
-        >
-          💡 ヒント
-        </button>
+        <>
+          <button
+            type="button"
+            className="btn-hint1 btn-xs"
+            title="誤答の選択肢を2つ減らします (H)"
+            disabled={feedback === 'ok' || revealed || remainingWrongChoices.length === 0}
+            onClick={handleUseHint}
+          >
+            💡 ヒント
+          </button>
+          <button
+            type="button"
+            className="btn-ghost btn-xs"
+            title="正解を表示して次へ進む（ミス扱い・復習登録）"
+            disabled={feedback === 'ok' || revealed}
+            onClick={handleGiveUp}
+          >
+            答えを見る
+          </button>
+        </>
       )}
       <button
         type="button"
         className="btn-secondary btn-xs"
+        title="選択肢の表示位置を切替 (L)"
         onClick={onToggleQuizChoiceLayout}
       >
         {quizChoiceLayout === 'pointing' ? '📋 下部に選択肢' : '📌 地図上に選択肢'}
@@ -647,112 +890,179 @@ export const QuizGame: React.FC<QuizGameProps> = ({
     </div>
   );
 
+  const renderRevealBanner = () =>
+    revealed ? (
+      <div className="yomi-reveal-banner" role="status" aria-live="polite">
+        <span>
+          答え：<strong>{answerKanji}</strong>
+          {answerRuby && `（${answerRuby}）`}
+          {answerPrefSuffix}
+        </span>
+        <button
+          type="button"
+          className="btn-primary btn-xs"
+          style={{ marginLeft: 10 }}
+          onClick={() => onAdvanceAfterGiveUp?.()}
+        >
+          次へ (Enter)
+        </button>
+      </div>
+    ) : null;
+
+  const renderJudgeBadge = () =>
+    feedback ? (
+      <div
+        key={`judge-${feedback}-${missNonce}`}
+        className={`judge-badge ${feedback === 'ok' ? 'is-ok' : 'is-ng'}`}
+        role="status"
+        aria-live="polite"
+      >
+        {feedback === 'ok' ? '○' : '×'}
+      </div>
+    ) : null;
+
   if (quizChoiceLayout === 'pointing') {
-    return (
-      <>
-        <div ref={layerRef} className="quiz-pointing-layer">
-          {pointingLayout && (
-            <>
-              <svg
-                className="quiz-pointing-lines"
-                width={pointingLayout.containerW}
-                height={pointingLayout.containerH}
-                aria-hidden="true"
-              >
-                {pointingLayout.cards.map((card) => {
-                  const isWrong = disabledChoiceIds.has(card.choice.id);
-                  const isElim = !isWrong && hintEliminatedIds.has(card.choice.id);
-                  const isCorrect = feedback === 'ok' && card.choice.id === activePiece.id;
-                  const strokeColor = isCorrect
-                    ? '#059669'
+    const orderedLineCards = pointingLayout
+      ? [...pointingLayout.cards].sort((a, b) => {
+          const rank = (id: string) =>
+            (feedback === 'ok' || revealed) && id === activePiece.id
+              ? 3
+              : id === hoveredChoiceId
+                ? 2
+                : disabledChoiceIds.has(id) || hintEliminatedIds.has(id)
+                  ? 0
+                  : 1;
+          return rank(a.choice.id) - rank(b.choice.id);
+        })
+      : [];
+
+    const pointingLayerNode = (
+      <div ref={layerRef} className="quiz-pointing-layer">
+        {pointingLayout && (
+          <>
+            <svg
+              className="quiz-pointing-lines"
+              width={pointingLayout.containerW}
+              height={pointingLayout.containerH}
+              aria-hidden="true"
+            >
+              {orderedLineCards.map((card) => {
+                const isWrong = disabledChoiceIds.has(card.choice.id);
+                const isElim = !isWrong && hintEliminatedIds.has(card.choice.id);
+                const isCorrect =
+                  (feedback === 'ok' || revealed) && card.choice.id === activePiece.id;
+                const isHovered =
+                  !isWrong && !isElim && !isCorrect && hoveredChoiceId === card.choice.id;
+                const strokeColor = isCorrect
+                  ? '#059669'
+                  : isHovered
+                    ? '#0284c7'
                     : isWrong || isElim
                       ? '#cbd5e1'
                       : '#d97706';
-                  const opacity = isWrong || isElim ? 0.45 : 0.92;
-                  return (
-                    <g key={`line-${card.choice.id}`} opacity={opacity}>
-                      <line
-                        x1={card.attachX}
-                        y1={card.attachY}
-                        x2={pointingLayout.lineTargetX}
-                        y2={pointingLayout.lineTargetY}
-                        stroke="#ffffff"
-                        strokeWidth={isCorrect ? 5 : 3.6}
-                        strokeLinecap="round"
-                      />
-                      <line
-                        x1={card.attachX}
-                        y1={card.attachY}
-                        x2={pointingLayout.lineTargetX}
-                        y2={pointingLayout.lineTargetY}
-                        stroke={strokeColor}
-                        strokeWidth={isCorrect ? 2.6 : 1.7}
-                        strokeDasharray={isWrong || isElim ? '4 4' : undefined}
-                        strokeLinecap="round"
-                      />
-                    </g>
-                  );
-                })}
-                {pointingLayout.anchorVisible && (
-                  <g>
-                    <circle
-                      cx={pointingLayout.anchorX}
-                      cy={pointingLayout.anchorY}
-                      r={8.5}
-                      fill="rgba(234, 88, 12, 0.22)"
+                const opacity = isWrong || isElim ? 0.4 : isHovered || isCorrect ? 1 : 0.88;
+                return (
+                  <g key={`line-${card.choice.id}`} opacity={opacity}>
+                    <line
+                      x1={card.attachX}
+                      y1={card.attachY}
+                      x2={pointingLayout.lineTargetX}
+                      y2={pointingLayout.lineTargetY}
                       stroke="#ffffff"
-                      strokeWidth={2}
+                      strokeWidth={isCorrect || isHovered ? 5.2 : 3.6}
+                      strokeLinecap="round"
                     />
-                    <circle
-                      cx={pointingLayout.anchorX}
-                      cy={pointingLayout.anchorY}
-                      r={4.8}
-                      fill={feedback === 'ok' ? '#059669' : '#ea580c'}
-                      stroke="#ffffff"
-                      strokeWidth={2}
+                    <line
+                      x1={card.attachX}
+                      y1={card.attachY}
+                      x2={pointingLayout.lineTargetX}
+                      y2={pointingLayout.lineTargetY}
+                      stroke={strokeColor}
+                      strokeWidth={isCorrect || isHovered ? 2.8 : 1.7}
+                      strokeDasharray={isWrong || isElim ? '4 4' : undefined}
+                      strokeLinecap="round"
                     />
                   </g>
-                )}
-              </svg>
-
-              {pointingLayout.cards.map((card) => {
-                const opt = card.choice;
-                const isWrong = disabledChoiceIds.has(opt.id);
-                const isElim = !isWrong && hintEliminatedIds.has(opt.id);
-                const isCorrect = feedback === 'ok' && opt.id === activePiece.id;
-                const kanji = opt.answerKanji ?? opt.name;
-                const ruby = opt.answerRuby ?? opt.ruby;
-                const cls = [
-                  'quiz-pointing-card',
-                  isWrong ? 'is-wrong-disabled' : '',
-                  isElim ? 'is-hint-eliminated' : '',
-                  isCorrect ? 'is-hint-correct' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ');
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    disabled={isWrong || isElim}
-                    className={cls}
-                    style={{
-                      position: 'absolute',
-                      left: card.x,
-                      top: card.y,
-                      width: card.width,
-                      minHeight: card.height,
-                    }}
-                    onClick={() => handleChoose(opt)}
-                  >
-                    <span className="choice-ruby">{ruby}</span>
-                    <span className="choice-kanji">{kanji}</span>
-                  </button>
                 );
               })}
-            </>
-          )}
-        </div>
+              {pointingLayout.anchorVisible && (
+                <g>
+                  <circle
+                    cx={pointingLayout.anchorX}
+                    cy={pointingLayout.anchorY}
+                    r={8.5}
+                    fill="rgba(234, 88, 12, 0.22)"
+                    stroke="#ffffff"
+                    strokeWidth={2}
+                  />
+                  <circle
+                    cx={pointingLayout.anchorX}
+                    cy={pointingLayout.anchorY}
+                    r={4.8}
+                    fill={feedback === 'ok' || revealed ? '#059669' : '#ea580c'}
+                    stroke="#ffffff"
+                    strokeWidth={2}
+                  />
+                </g>
+              )}
+            </svg>
+
+            {pointingLayout.cards.map((card) => {
+              const opt = card.choice;
+              const isWrong = disabledChoiceIds.has(opt.id);
+              const isElim = !isWrong && hintEliminatedIds.has(opt.id);
+              const isCorrect = (feedback === 'ok' || revealed) && opt.id === activePiece.id;
+              const isDisabled = isWrong || isElim || (revealed && !isCorrect);
+              const kanji = opt.answerKanji ?? opt.name;
+              const ruby = opt.answerRuby ?? opt.ruby;
+              const cls = [
+                'quiz-pointing-card',
+                card.isMultiline ? 'is-multiline' : '',
+                isWrong ? 'is-wrong-disabled' : '',
+                isElim ? 'is-hint-eliminated' : '',
+                isCorrect ? 'is-hint-correct' : '',
+              ]
+                .filter(Boolean)
+                .join(' ');
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  disabled={isDisabled}
+                  className={cls}
+                  style={{
+                    position: 'absolute',
+                    left: card.x,
+                    top: card.y,
+                    width: card.width,
+                    minHeight: card.height,
+                  }}
+                  onMouseEnter={() => setHoveredChoiceId(opt.id)}
+                  onMouseLeave={() =>
+                    setHoveredChoiceId((cur) => (cur === opt.id ? null : cur))
+                  }
+                  onFocus={() => setHoveredChoiceId(opt.id)}
+                  onBlur={() =>
+                    setHoveredChoiceId((cur) => (cur === opt.id ? null : cur))
+                  }
+                  onClick={() => handleChoose(opt)}
+                >
+                  <span className="quiz-key-badge" aria-hidden="true">
+                    {card.choiceIdx + 1}
+                  </span>
+                  <span className="choice-ruby">{ruby}</span>
+                  <span className="choice-kanji">{kanji}</span>
+                </button>
+              );
+            })}
+          </>
+        )}
+      </div>
+    );
+
+    return (
+      <>
+        {mapStageEl ? createPortal(pointingLayerNode, mapStageEl) : pointingLayerNode}
 
         <div className="bottom-play-panel quiz-panel quiz-pointing-bar">
           {isGeographyQuiz && activePiece.desc && (
@@ -762,18 +1072,16 @@ export const QuizGame: React.FC<QuizGameProps> = ({
             </div>
           )}
 
+          {renderRevealBanner()}
+
           <div className="quiz-prompt-row">
             <span className="quiz-prompt-text">
-              地図上の選択肢からハイライト地点の名前を選択してください
+              地図上の選択肢（または 1〜6 キー）でハイライト地点を選択
             </span>
             {renderActionButtons()}
           </div>
 
-          {feedback && (
-            <div className={`judge-badge ${feedback === 'ok' ? 'is-ok' : 'is-ng'}`}>
-              {feedback === 'ok' ? '○' : '×'}
-            </div>
-          )}
+          {renderJudgeBadge()}
         </div>
       </>
     );
@@ -789,18 +1097,21 @@ export const QuizGame: React.FC<QuizGameProps> = ({
         </div>
       )}
 
+      {renderRevealBanner()}
+
       <div className="quiz-prompt-row">
         <span className="quiz-prompt-text">
-          地図でハイライトされている場所の名前を選択してください
+          地図でハイライトされている場所の名前を選択（1〜6 キー対応）
         </span>
         {renderActionButtons()}
       </div>
 
       <div className="quiz-choices-grid">
-        {choices.map((opt) => {
+        {choices.map((opt, idx) => {
           const isWrong = disabledChoiceIds.has(opt.id);
           const isElim = !isWrong && hintEliminatedIds.has(opt.id);
-          const isCorrect = feedback === 'ok' && opt.id === activePiece.id;
+          const isCorrect = (feedback === 'ok' || revealed) && opt.id === activePiece.id;
+          const isDisabled = isWrong || isElim || (revealed && !isCorrect);
           const kanji = opt.answerKanji ?? opt.name;
           const ruby = opt.answerRuby ?? opt.ruby;
           const cls = [
@@ -815,10 +1126,13 @@ export const QuizGame: React.FC<QuizGameProps> = ({
             <button
               key={opt.id}
               type="button"
-              disabled={isWrong || isElim}
+              disabled={isDisabled}
               className={cls}
               onClick={() => handleChoose(opt)}
             >
+              <span className="quiz-key-badge" aria-hidden="true">
+                {idx + 1}
+              </span>
               <span className="choice-ruby">{ruby}</span>
               <span className="choice-kanji">{kanji}</span>
             </button>
@@ -826,11 +1140,9 @@ export const QuizGame: React.FC<QuizGameProps> = ({
         })}
       </div>
 
-      {feedback && (
-        <div className={`judge-badge ${feedback === 'ok' ? 'is-ok' : 'is-ng'}`}>
-          {feedback === 'ok' ? '○' : '×'}
-        </div>
-      )}
+      {renderJudgeBadge()}
     </div>
   );
 };
+
+export const QuizGame = React.memo(QuizGameInner);
